@@ -43,21 +43,33 @@ clashvision/
 │   └── custom_strategy.py    # Strategy E: User-defined army compositions and rules
 ├── simulator/                # Local battle replay & sandboxing
 │   ├── simulation_engine.py  # 5-state playback engine (IDLE, PLAYING, PAUSED, COMPLETED, RESET)
+│   ├── autonomous_state_machine.py # 15-state event-driven state machine with transition graph
+│   ├── target_selector.py    # Multi-mode loot filter (ALL, ANY, WEIGHTED, CUSTOM) & scoring
+│   ├── deployment_executor.py # Paced simulated deployment executor with safety verification
+│   ├── battle_resolver.py    # Multi-strategy outcome calculation, star attribution, & loot resolution
+│   ├── autonomous_engine.py  # End-to-end full-cycle autonomous farming engine
 │   ├── sandboxed_controller.py # Quarantined coordinate controller with LiveInputSafetyViolation
 │   ├── safety_barrier.py     # Sub-millisecond emergency stop latching
 │   └── replay_recorder.py    # JSON timeline recording and deterministic replaying
 ├── storage/                  # SQLite WAL database & repository
-│   ├── db.py                 # SQLite WAL connection manager with thread-safe locking
+├── db.py                 # SQLite WAL connection manager with thread-safe locking
 │   └── repository.py         # CRUD repository for sessions, scans, decisions, logs, and datasets
 ├── ui/                       # PySide6 dark-themed desktop dashboard
 │   ├── main_window.py        # Primary shell with sidebar navigation & emergency stop
 │   ├── styles.py             # Dark theme palette & CSS stylesheet
 │   ├── workers.py            # Non-blocking asynchronous QThread background workers
 │   ├── qt_compat.py          # PySide6/PyQt6 abstraction with headless test fallback
-│   └── views/                # 9 functional views
+│   └── views/                # 10 functional views
 │       ├── overview_view.py       # Live system overview, resources, and alerts
 │       ├── live_capture_view.py   # Real-time preview with toggleable CV overlays
 │       ├── base_analyzer_view.py  # Annotated base breakdown & suitability meters
+│       ├── strategy_view.py       # Tactical plan visualizer & deployment steps
+│       ├── simulator_view.py      # Manual simulation sandbox & interactive controls
+│       ├── autonomous_simulator_view.py # Full-cycle autonomous farming dashboard
+│       ├── sessions_view.py       # Historical farming sessions & analytics
+│       ├── replay_view.py         # Frame-by-frame attack replay inspector
+│       ├── settings_view.py       # Loot thresholds, OCR confidence, & engine tuning
+│       └── system_health_view.py  # FPS meters, memory monitor, & latency gauges
 │       ├── strategy_view.py       # Strategy comparisons & step-by-step deployment timeline
 │       ├── simulator_view.py      # Battle playback controls, speed scaling, troop markers
 │       ├── analytics_view.py      # Session statistics, OCR accuracy, dynamic CV latency
