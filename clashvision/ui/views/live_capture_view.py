@@ -149,7 +149,8 @@ class LiveCaptureView(QWidget):
             f"Resolution: {w}x{h} | FPS: {self._fps_counter:.1f} | Latency: {max(0, latency_ms)} ms"
         )
         self._last_packet = packet
-        self._render_canvas(packet)
+        if self.isVisible():
+            self._render_canvas(packet)
 
     def _render_canvas(self, packet: FramePacket) -> None:
         """Render frame and overlay annotations to feed canvas."""

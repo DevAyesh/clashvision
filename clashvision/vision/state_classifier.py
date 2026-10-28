@@ -440,9 +440,13 @@ class StateClassifier:
             evidence["loot_box_top_left"] = True
             evidence["next_button_bottom_right"] = True
             scores[GameState.ENEMY_BASE_PREVIEW] += 3.5
+        elif has_next_button:
+            evidence["next_button_bottom_right"] = True
+            scores[GameState.ENEMY_BASE_PREVIEW] += 2.5
         elif has_loot_box:
             evidence["loot_box_top_left"] = True
-            scores[GameState.ENEMY_BASE_PREVIEW] += 2.0
+            # Weak indicator without Next button (never outscores Home Village)
+            scores[GameState.ENEMY_BASE_PREVIEW] += 0.6
 
     def _detect_modal_interfaces(
         self, bgr: np.ndarray, evidence: Dict[str, Any], scores: Dict[GameState, float]
@@ -526,41 +530,42 @@ class StateClassifier:
             return
 
         # 1. Top-right resource meters: Gold (yellow icon), Elixir (magenta icon)
-        top_right_crop = bgr[int(h * 0.01):int(h * 0.18), int(w * 0.75):int(w * 0.99)]
+        top_right_crop = bgr[int(h * 0.01):int(h * 0.22), int(w * 0.70):int(w * 0.99)]
         has_top_hud = False
         if top_right_crop.size > 0:
             hsv_tr = cv2.cvtColor(top_right_crop, cv2.COLOR_BGR2HSV)
-            # Gold meter
-            gold_m = np.count_nonzero(cv2.inRange(hsv_tr, np.array([20, 120, 120]), np.array([35, 255, 255])))
-            # Magenta elixir meter
-            elixir_m = np.count_nonzero(cv2.inRange(hsv_tr, np.array([140, 100, 100]), np.array([165, 255, 255])))
-            has_top_hud = gold_m > 30 and elixir_m > 30
+            # Gold meter (H: 15-38, S: 70-255, V: 80-255)
+            gold_m = np.count_nonzero(cv2.inRange(hsv_tr, np.array([15, 70, 80]), np.array([38, 255, 255])))
+            # Magenta elixir meter (H: 135-170, S: 60-255, V: 70-255)
+            elixir_m = np.count_nonzero(cv2.inRange(hsv_tr, np.array([135, 60, 70]), np.array([170, 255, 255])))
+            has_top_hud = (gold_m > 25 and elixir_m > 25) or (gold_m > 50)
 
-        # 2. Bottom-left "Attack!" Button: x ~ 0.01*w to 0.15*w, y ~ 0.85*h to 0.98*h
-        atk_crop = bgr[int(h * 0.85):int(h * 0.98), int(w * 0.01):int(w * 0.15)]
+        # 2. Bottom-left "Attack!" Button: x ~ 0.01*w to 0.18*w, y ~ 0.80*h to 0.99*h
+        atk_crop = bgr[int(h * 0.80):int(h * 0.99), int(w * 0.01):int(w * 0.18)]
         has_attack_button = False
         if atk_crop.size > 0:
             hsv_atk = cv2.cvtColor(atk_crop, cv2.COLOR_BGR2HSV)
-            orange_atk = cv2.inRange(hsv_atk, np.array([10, 120, 120]), np.array([25, 255, 255]))
-            has_attack_button = np.count_nonzero(orange_atk) > (atk_crop.shape[0] * atk_crop.shape[1] * 0.15)
+            orange_atk = cv2.inRange(hsv_atk, np.array([10, 100, 100]), np.array([28, 255, 255]))
+            has_attack_button = np.count_nonzero(orange_atk) > 30
 
         # 3. Top-left Player Level Badge (Blue circle/star)
-        top_left_crop = bgr[int(h * 0.02):int(h * 0.12), int(w * 0.01):int(w * 0.08)]
+        top_left_crop = bgr[int(h * 0.02):int(h * 0.14), int(w * 0.01):int(w * 0.10)]
         has_player_badge = False
         if top_left_crop.size > 0:
             b_val = top_left_crop[:, :, 0].astype(np.int16)
             r_val = top_left_crop[:, :, 2].astype(np.int16)
-            has_player_badge = np.count_nonzero((b_val > 120) & (b_val - r_val > 40)) > 20
+            has_player_badge = np.count_nonzero((b_val > 110) & (b_val - r_val > 30)) > 15
 
         evidence["top_hud_detected"] = has_top_hud
         evidence["attack_button_detected"] = has_attack_button
         evidence["player_badge_detected"] = has_player_badge
 
         if has_top_hud and has_attack_button:
-            scores[GameState.HOME_VILLAGE] += 3.5
-        elif has_attack_button or (has_top_hud and has_player_badge):
+            scores[GameState.HOME_VILLAGE] += 3.8
+        elif has_attack_button or has_top_hud:
+            scores[GameState.HOME_VILLAGE] += 3.0
+        elif has_player_badge and grass_ratio > 0.25:
             scores[GameState.HOME_VILLAGE] += 2.5
         elif grass_ratio > 0.40:
-            # Baseline village weight
-            scores[GameState.HOME_VILLAGE] += 1.2
+            scores[GameState.HOME_VILLAGE] += 1.8
 

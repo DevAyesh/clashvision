@@ -92,7 +92,7 @@ class CaptureWorker(QThread):
                         if win_info is None and self.window_detector is not None and hasattr(self.window_detector, "find_target_window"):
                             win_info = self.window_detector.find_target_window()
 
-                        if win_info is None:
+                        if win_info is None and self.window_detector is not None:
                             time.sleep(0.4)
                             continue
 
