@@ -11,6 +11,7 @@ from clashvision.ui.views.analytics_view import AnalyticsView
 from clashvision.ui.views.dataset_view import DatasetView
 from clashvision.ui.views.settings_view import SettingsView
 from clashvision.ui.views.logs_view import LogsView
+from clashvision.ui.views.autonomous_simulator_view import AutonomousSimulatorView
 
 __all__ = [
     "OverviewView",
@@ -22,4 +23,5 @@ __all__ = [
     "DatasetView",
     "SettingsView",
     "LogsView",
+    "AutonomousSimulatorView",
 ]
