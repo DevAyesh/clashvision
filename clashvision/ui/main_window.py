@@ -42,6 +42,7 @@ from clashvision.ui.views import (
     BaseAnalyzerView,
     StrategyView,
     SimulatorView,
+    AutonomousSimulatorView,
     AnalyticsView,
     DatasetView,
     SettingsView,
@@ -57,6 +58,7 @@ VIEW_TITLES = [
     ("🔍 Base Analyzer", "base_analyzer"),
     ("♟️ Strategy Planner", "strategy"),
     ("⚔️ Battle Simulator", "simulator"),
+    ("🤖 Auto Simulator", "auto_simulator"),
     ("📈 Analytics", "analytics"),
     ("📁 Dataset Manager", "dataset"),
     ("⚙️ Settings", "settings"),
@@ -213,6 +215,7 @@ class MainWindow(QMainWindow):
         self.view_base_analyzer = BaseAnalyzerView(parent=self)
         self.view_strategy = StrategyView(parent=self)
         self.view_simulator = SimulatorView(parent=self)
+        self.view_auto_simulator = AutonomousSimulatorView(parent=self)
         self.view_analytics = AnalyticsView(repo=self.repo, parent=self)
         self.view_dataset = DatasetView(repo=self.repo, parent=self)
         self.view_settings = SettingsView(repo=self.repo, settings=self.settings, parent=self)
@@ -224,6 +227,7 @@ class MainWindow(QMainWindow):
             self.view_base_analyzer,
             self.view_strategy,
             self.view_simulator,
+            self.view_auto_simulator,
             self.view_analytics,
             self.view_dataset,
             self.view_settings,
@@ -325,7 +329,7 @@ class MainWindow(QMainWindow):
                     )
 
             # Update top status indicator depending on whether in Simulator view
-            if index == 4:  # Simulator View
+            if index in (4, 5):  # Simulator or Auto Simulator View
                 self.mode_indicator.setText("LOCAL SIMULATION (OFFLINE REPLAY)")
                 self.mode_indicator.setStyleSheet(
                     f"background-color: #2b173d; color: {COLOR_NEON_PURPLE}; border: 1px solid {COLOR_NEON_PURPLE}; "
@@ -342,6 +346,8 @@ class MainWindow(QMainWindow):
         """Immediate Emergency Stop halting simulation and logging event (<= 50ms)."""
         logger.warning("Emergency Stop triggered on MainWindow.")
         self.simulation_worker.stop_playback()
+        if hasattr(self, "view_auto_simulator") and hasattr(self.view_auto_simulator, "engine"):
+            self.view_auto_simulator.engine.emergency_stop()
         self.view_overview.show_alert("EMERGENCY STOP", "Playback halted immediately.")
         try:
             self.view_logs.append_log_entry("WARNING", "Emergency Stop button pressed.", logger_name="MainWindow")
@@ -405,6 +411,8 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event: Any) -> None:
         """Handle window close event and terminate workers gracefully."""
         self.stop_all_workers()
+        if hasattr(self, "view_auto_simulator") and hasattr(self.view_auto_simulator, "engine"):
+            self.view_auto_simulator.engine.stop()
         if self.repo:
             try:
                 self.repo.end_session(self._current_session_id, notes="Clean shutdown")
