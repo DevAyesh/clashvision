@@ -88,10 +88,15 @@ class CaptureWorker(QThread):
                 try:
                     packet: Optional[FramePacket] = None
                     if self.grabber is not None and hasattr(self.grabber, "grab_frame"):
+                        win_info = self.window_info
+                        if win_info is None and self.window_detector is not None and hasattr(self.window_detector, "find_target_window"):
+                            win_info = self.window_detector.find_target_window()
+
+                        if win_info is None:
+                            time.sleep(0.4)
+                            continue
+
                         try:
-                            win_info = self.window_info
-                            if win_info is None and self.window_detector is not None and hasattr(self.window_detector, "find_target_window"):
-                                win_info = self.window_detector.find_target_window()
                             packet = self.grabber.grab_frame(win_info)
                         except TypeError:
                             packet = self.grabber.grab_frame()

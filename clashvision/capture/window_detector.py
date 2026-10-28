@@ -275,21 +275,7 @@ class WindowDetector:
         and fallback heuristics.
         Automatically registers the matched window with SafetyGuard.
         """
-        windows = self.enumerate_windows()
-
-        # Priority 1: Exact or case-insensitive process name match
-        for w in windows:
-            if w.process_name and any(p.lower() == w.process_name.lower() for p in self.target_process_names):
-                self._register_with_safety_guard(w)
-                return w
-
-        # Priority 2: Title regex match
-        for w in windows:
-            if w.title and any(pattern.search(w.title) for pattern in self.compiled_title_regexes):
-                self._register_with_safety_guard(w)
-                return w
-
-        # Priority 3: If mock mode, return registered mock window or None if empty
+        # If in mock mode, return registered mock window
         if self.mock_mode:
             if self._mock_windows:
                 w = self._mock_windows[0]
@@ -297,12 +283,43 @@ class WindowDetector:
                 return w
             return None
 
-        # Priority 4: Offline / headless fallback when no live emulator window is active
-        fallback = self.create_mock_target(
-            title="Google Play Games on PC (Offline Fallback)",
-            process_name="PlayGamesPC.exe",
-        )
-        return fallback
+        windows = self.enumerate_windows()
+
+        # Filter windows with visible geometry
+        capturable = [
+            w for w in windows
+            if w.is_visible and not w.is_minimized and w.client_rect.width >= 200 and w.client_rect.height >= 200
+        ]
+
+        # Priority 1: Title contains "Clash of Clans"
+        coc_pattern = re.compile(r"Clash\s+of\s+Clans", re.IGNORECASE)
+        for w in capturable:
+            if w.title and coc_pattern.search(w.title):
+                self._register_with_safety_guard(w)
+                return w
+
+        # Priority 2: Other emulator title matches (Google Play Games, BlueStacks, LDPlayer, Nox)
+        for w in capturable:
+            if w.title and any(pattern.search(w.title) for pattern in self.compiled_title_regexes):
+                self._register_with_safety_guard(w)
+                return w
+
+        # Priority 3: Process name match
+        for w in capturable:
+            if w.process_name and any(
+                p.lower() in (w.process_name.lower(), f"{w.process_name.lower()}.exe")
+                for p in self.target_process_names
+            ):
+                self._register_with_safety_guard(w)
+                return w
+
+        # Priority 4: Broad check across any window with Clash of Clans title
+        for w in windows:
+            if w.title and coc_pattern.search(w.title):
+                self._register_with_safety_guard(w)
+                return w
+
+        return None
 
     def create_mock_target(
         self,

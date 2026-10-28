@@ -153,19 +153,53 @@ class LiveCaptureView(QWidget):
 
     def _render_canvas(self, packet: FramePacket) -> None:
         """Render frame and overlay annotations to feed canvas."""
-        w = packet.width
-        h = packet.height
+        if packet is None or packet.frame is None:
+            return
 
-        overlays = []
-        if self.chk_bounding_boxes.isChecked():
-            overlays.append("ROIs")
-        if self.chk_ocr_zones.isChecked():
-            overlays.append("OCR Zones")
-        if self.chk_state_badge.isChecked():
-            overlays.append("HUD")
+        annotated = self.get_annotated_frame()
+        if annotated is None:
+            annotated = packet.frame
 
-        overlay_suffix = f" [HUD: {', '.join(overlays)}]" if overlays else ""
-        self.feed_canvas.setText(f"Frame #{packet.frame_id} captured ({w}x{h}){overlay_suffix}")
+        try:
+            import cv2
+            from clashvision.ui.qt_compat import QImage, QPixmap
+            
+            rgb_frame = cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB)
+            h, w, ch = rgb_frame.shape
+            bytes_per_line = ch * w
+            fmt = getattr(QImage.Format, "Format_RGB888", 13)
+            q_img = QImage(rgb_frame.data, w, h, bytes_per_line, fmt)
+            pixmap = QPixmap.fromImage(q_img)
+            
+            target_size = self.canvas_container.size()
+            target_w = max(400, target_size.width() - 20)
+            target_h = max(300, target_size.height() - 20)
+            
+            aspect_ratio_mode = getattr(Qt.AspectRatioMode, "KeepAspectRatio", getattr(Qt, "KeepAspectRatio", None))
+            transform_mode = getattr(Qt.TransformationMode, "SmoothTransformation", getattr(Qt, "SmoothTransformation", None))
+
+            if aspect_ratio_mode is not None and transform_mode is not None:
+                scaled_pixmap = pixmap.scaled(target_w, target_h, aspect_ratio_mode, transform_mode)
+            else:
+                scaled_pixmap = pixmap.scaled(target_w, target_h)
+
+            self.feed_canvas.setPixmap(scaled_pixmap)
+            self.feed_canvas.setText("")
+        except Exception:
+            overlays = []
+            if self.chk_bounding_boxes.isChecked():
+                overlays.append("ROIs")
+            if self.chk_ocr_zones.isChecked():
+                overlays.append("OCR Zones")
+            if self.chk_state_badge.isChecked():
+                overlays.append("HUD")
+            overlay_suffix = f" [HUD: {', '.join(overlays)}]" if overlays else ""
+            self.feed_canvas.setText(f"Frame #{packet.frame_id} captured ({packet.width}x{packet.height}){overlay_suffix}")
+
+        if packet.window_info:
+            self.status_footer.setText(
+                f"Active Target: {packet.window_info.title} (HWND: {packet.window_info.hwnd}, {packet.width}x{packet.height})"
+            )
 
     def get_annotated_frame(self) -> Optional[Any]:
         """Returns the current frame with visual overlay annotations drawn."""

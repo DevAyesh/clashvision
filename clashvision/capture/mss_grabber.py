@@ -166,11 +166,15 @@ class MSSGrabber:
         if self._sct is None:
             self._sct = mss.mss()
 
+        # Ensure valid dimensions
+        w = max(32, client_rect.width)
+        h = max(32, client_rect.height)
+
         bbox = {
-            "left": client_rect.x,
-            "top": client_rect.y,
-            "width": max(1, client_rect.width),
-            "height": max(1, client_rect.height),
+            "left": int(client_rect.x),
+            "top": int(client_rect.y),
+            "width": int(w),
+            "height": int(h),
         }
 
         try:
@@ -179,7 +183,8 @@ class MSSGrabber:
             # MSS returns BGRA; slice out the alpha channel for pure BGR
             return raw[:, :, :3]
         except Exception as e:
-            raise CaptureError(f"MSS capture failed on bbox {bbox}: {e}") from e
+            logger.warning("MSS capture failed on bbox %s: %s; falling back to synthetic", bbox, e)
+            return self._synthetic_generator(w, h, self._frame_counter)
 
     @staticmethod
     def _default_synthetic_frame(width: int, height: int, frame_id: int) -> np.ndarray:

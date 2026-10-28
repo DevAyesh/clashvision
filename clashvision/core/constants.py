@@ -99,12 +99,20 @@ REFERENCE_ASPECT_RATIO: float = VIRTUAL_REFERENCE_WIDTH / VIRTUAL_REFERENCE_HEIG
 # Process matching signatures for Google Play Games PC and compatible emulators
 DEFAULT_TARGET_PROCESS_NAMES = [
     "PlayGamesPC.exe",
+    "PlayGamesPC",
     "crosvm.exe",
+    "crosvm",
+    "Service.exe",
     "HD-Player.exe",
+    "HD-Player",
     "BlueStacks.exe",
+    "BlueStacks",
     "dnplayer.exe",
+    "dnplayer",
     "Nox.exe",
+    "Nox",
     "MEmu.exe",
+    "MEmu",
 ]
 
 DEFAULT_TARGET_WINDOW_TITLES = [
@@ -114,6 +122,7 @@ DEFAULT_TARGET_WINDOW_TITLES = [
     r"BlueStacks",
     r"LDPlayer",
     r"NoxPlayer",
+    r"MEmu",
 ]
 
 # Standard default operational bounds

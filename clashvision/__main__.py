@@ -54,7 +54,7 @@ def main(argv=None):
     if args.fps:
         settings.capture.target_fps = args.fps
 
-    window = MainWindow(settings=settings, start_workers=True)
+    window = MainWindow(settings=settings, start_workers=True, mock_capture=args.mock_capture)
     window.show()
 
     if hasattr(app, "exec"):

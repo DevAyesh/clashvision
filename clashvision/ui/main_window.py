@@ -74,6 +74,7 @@ class MainWindow(QMainWindow):
         repo: Optional[Repository] = None,
         settings: Optional[AppSettings] = None,
         start_workers: bool = False,
+        mock_capture: bool = False,
         parent: Optional[QWidget] = None,
     ) -> None:
         super().__init__(parent)
@@ -81,6 +82,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("ClashVision — Read-Only CoC Vision & Farming Advisor")
         self.resize(1280, 800)
 
+        self._mock_capture = mock_capture
         self.repo = repo or Repository()
         self.settings = settings or AppSettings()
         self._current_session_id = f"sess_{int(time.time())}"
@@ -239,8 +241,26 @@ class MainWindow(QMainWindow):
 
     def _init_workers(self) -> None:
         """Initialize decoupled background worker threads and wire Qt signals."""
-        self.capture_worker = CaptureWorker(fps=float(self.settings.capture.target_fps), parent=self)
-        self.vision_worker = VisionWorker(parent=self)
+        from clashvision.capture.window_detector import WindowDetector
+        from clashvision.capture.mss_grabber import MSSGrabber
+        from clashvision.vision.ocr_engine import get_ocr_engine
+
+        window_detector = WindowDetector(mock_mode=self._mock_capture)
+        grabber = MSSGrabber(
+            target_fps=self.settings.capture.target_fps,
+            mock_mode=self._mock_capture,
+        )
+
+        self.capture_worker = CaptureWorker(
+            fps=float(self.settings.capture.target_fps),
+            grabber=grabber,
+            window_detector=window_detector,
+            parent=self,
+        )
+        self.vision_worker = VisionWorker(
+            ocr_engine=get_ocr_engine(),
+            parent=self,
+        )
         self.decision_worker = DecisionWorker(parent=self)
         self.simulation_worker = SimulationWorker(parent=self)
 
