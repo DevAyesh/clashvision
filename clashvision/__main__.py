@@ -41,9 +41,25 @@ def main(argv=None):
     if args.headless:
         print(f"ClashVision v{__version__} starting in headless mode (FPS={args.fps}, mock={args.mock_capture}).")
         return 0
-    else:
-        print(f"ClashVision v{__version__} initialized.")
-        return 0
+
+    from clashvision.ui.qt_compat import QApplication
+    from clashvision.ui.main_window import MainWindow
+    from clashvision.core.config import AppSettings
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv if argv is None else [sys.argv[0]] + list(argv))
+
+    settings = AppSettings()
+    if args.fps:
+        settings.capture.target_fps = args.fps
+
+    window = MainWindow(settings=settings, start_workers=True)
+    window.show()
+
+    if hasattr(app, "exec"):
+        return app.exec()
+    return app.exec_()
 
 
 if __name__ == "__main__":
