@@ -133,6 +133,7 @@ class BaseLayoutAnalyzer:
                 perim_ratio = ratio
 
         access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartment_count / 10.0))))
+        symm_score = self.compute_base_symmetry(model)
 
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(ratio, 3),
@@ -144,6 +145,7 @@ class BaseLayoutAnalyzer:
             core_resource_ratio=round(core_ratio, 3),
             perimeter_resource_ratio=round(perim_ratio, 3),
             resource_accessibility_score=round(access_score, 3),
+            symmetry_score=round(symm_score, 3),
             metadata={
                 "layout_type": str(getattr(model, "layout_type", "UNKNOWN")),
                 "total_collectors": total_collectors,
@@ -266,6 +268,7 @@ class BaseLayoutAnalyzer:
         compartments = sum(1 for c in wall_contours if cv2.contourArea(c) > 150)
 
         access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartments / 10.0))))
+        symm_score = self.compute_base_symmetry(image)
 
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(exp_ratio, 3),
@@ -277,6 +280,7 @@ class BaseLayoutAnalyzer:
             core_resource_ratio=round(core_ratio, 3),
             perimeter_resource_ratio=round(perim_ratio, 3),
             resource_accessibility_score=round(access_score, 3),
+            symmetry_score=round(symm_score, 3),
             metadata={
                 "detected_collectors": total_collectors,
                 "detected_exposed": exposed_collectors,
@@ -285,6 +289,89 @@ class BaseLayoutAnalyzer:
                 "air_defense_count": len(air_defenses),
             },
         )
+
+    def compute_base_symmetry(self, source: Any) -> float:
+        """
+        Quantifies structural base symmetry in range [0.0, 1.0].
+        Evaluates horizontal reflection, vertical reflection, and 180-deg rotational symmetry.
+        """
+        if source is None:
+            return 0.0
+
+        # Case A: BaseLayoutModel or object with buildings/coordinates
+        if hasattr(source, "buildings") or hasattr(source, "wall_coordinates"):
+            points: List[Tuple[float, float]] = []
+            for b in getattr(source, "buildings", []):
+                try:
+                    bx, by = float(b.x), float(b.y)
+                    if math.isfinite(bx) and math.isfinite(by):
+                        points.append((bx, by))
+                except (TypeError, ValueError, AttributeError):
+                    pass
+
+            for w in getattr(source, "wall_coordinates", []):
+                try:
+                    wx, wy = float(w[0]), float(w[1])
+                    if math.isfinite(wx) and math.isfinite(wy):
+                        points.append((wx, wy))
+                except (TypeError, ValueError, IndexError):
+                    pass
+
+            if len(points) < 4:
+                return 0.5  # Neutral default for sparse layouts
+
+            # Determine centroid
+            xs = [p[0] for p in points]
+            ys = [p[1] for p in points]
+            cx = sum(xs) / len(xs)
+            cy = sum(ys) / len(ys)
+            span_x = max(xs) - min(xs)
+            span_y = max(ys) - min(ys)
+            tolerance = max(0.04 * max(span_x, span_y), 0.03)
+
+            # Check matching for horizontal (flip x across cx), vertical (flip y across cy), rotational
+            pts_set = points
+            h_matches = 0
+            v_matches = 0
+            r_matches = 0
+
+            for px, py in pts_set:
+                target_hx, target_hy = 2 * cx - px, py
+                target_vx, target_vy = px, 2 * cy - py
+                target_rx, target_ry = 2 * cx - px, 2 * cy - py
+
+                # Nearest neighbor check
+                if any(abs(ox - target_hx) <= tolerance and abs(oy - target_hy) <= tolerance for ox, oy in pts_set):
+                    h_matches += 1
+                if any(abs(ox - target_vx) <= tolerance and abs(oy - target_vy) <= tolerance for ox, oy in pts_set):
+                    v_matches += 1
+                if any(abs(ox - target_rx) <= tolerance and abs(oy - target_ry) <= tolerance for ox, oy in pts_set):
+                    r_matches += 1
+
+            n = float(len(pts_set))
+            score_h = h_matches / n
+            score_v = v_matches / n
+            score_r = r_matches / n
+            return float(max(0.0, min(1.0, max(score_h, score_v, score_r))))
+
+        # Case B: Image ndarray
+        if isinstance(source, np.ndarray) and source.size > 0 and len(source.shape) >= 2:
+            gray = source if len(source.shape) == 2 else cv2.cvtColor(source, cv2.COLOR_BGR2GRAY)
+            # Resize to standard analysis size for speed and normalized comparison
+            resized = cv2.resize(gray, (160, 160), interpolation=cv2.INTER_AREA)
+
+            flip_h = cv2.flip(resized, 1)
+            flip_v = cv2.flip(resized, 0)
+            flip_r = cv2.flip(resized, -1)
+
+            corr_h = cv2.matchTemplate(resized, flip_h, cv2.TM_CCOEFF_NORMED)[0][0]
+            corr_v = cv2.matchTemplate(resized, flip_v, cv2.TM_CCOEFF_NORMED)[0][0]
+            corr_r = cv2.matchTemplate(resized, flip_r, cv2.TM_CCOEFF_NORMED)[0][0]
+
+            best_corr = max(0.0, float(max(corr_h, corr_v, corr_r)))
+            return float(min(1.0, best_corr))
+
+        return 0.0
 
     def analyze_resource_distribution(self, source: Any) -> Dict[str, float]:
         """
