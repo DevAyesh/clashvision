@@ -395,7 +395,7 @@ class AutonomousEngine:
 
             # Clean session shutdown (preserve ERROR if emergency stop or error tripped)
             self.stats.end_time = time.time()
-            if not self.barrier.is_emergency_stop_tripped and self.current_state != FarmingState.ERROR:
+            if not self.barrier.is_emergency_stopped and self.current_state != FarmingState.ERROR:
                 if self.state_machine.can_transition_to(FarmingState.STOPPED):
                     self.state_machine.transition_to(FarmingState.STOPPED, trigger="run_loop_complete")
 
