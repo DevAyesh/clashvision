@@ -346,6 +346,12 @@ if IS_HEADLESS_FALLBACK:
         def setWindowTitle(self, title: str) -> None:
             pass
 
+        def setToolTip(self, tip: str) -> None:
+            self._tooltip = tip
+
+        def toolTip(self) -> str:
+            return getattr(self, "_tooltip", "")
+
         def close(self) -> bool:
             return True
 
@@ -655,8 +661,8 @@ if IS_HEADLESS_FALLBACK:
         def __init__(self, key: Any = None) -> None:
             self._key = key
 
-    class MockShortcut(MockQObject):
-        activated = MockSignal()
+    class MockShortcut(MockObject):
+        activated = Signal()
 
         def __init__(self, key: Any = None, parent: Any = None) -> None:
             super().__init__(parent)
