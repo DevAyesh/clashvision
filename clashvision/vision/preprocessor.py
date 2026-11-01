@@ -329,6 +329,7 @@ class VisionPreprocessor:
         crop: np.ndarray,
         resource_type: str = "gold",
         strategy: str = "auto",
+        method: Optional[str] = None,
         target_height: int = 40,
     ) -> np.ndarray:
         """
@@ -337,10 +338,14 @@ class VisionPreprocessor:
         - 'clahe_otsu': Contrast-limited adaptive equalization with Otsu binarization.
         - 'adaptive_gaussian': Local adaptive Gaussian thresholding for dark or shaded backgrounds.
         - 'luminance_mask': High-value brightness isolation (isolates white digits from drop-shadows).
+        - 'bilateral_adaptive': Noise reduction + adaptive threshold.
+        - 'invert_thresh': Inverted thresholding.
         - 'auto': Resource-specific heuristic selection based on resource_type.
         """
-        if crop is None or crop.size == 0 or crop.ndim < 2:
-            return np.zeros((0, 0), dtype=np.uint8)
+        if crop is None or crop.size == 0:
+            return crop
+
+        effective_strat = (method or strategy or "auto").lower()
 
         # Upscale if crop height is below target_height
         h, w = crop.shape[:2]
@@ -349,7 +354,7 @@ class VisionPreprocessor:
             crop = cls.scale_for_ocr(crop, scale_factor=scale_fac)
 
         res_type = resource_type.lower()
-        strat = strategy.lower()
+        strat = effective_strat
 
         if strat == "auto":
             if res_type == "dark_elixir":
@@ -367,6 +372,17 @@ class VisionPreprocessor:
                 if cv2.countNonZero(mask) > 10:
                     return cv2.bitwise_not(mask)
             strat = "clahe_otsu"
+
+        if strat == "bilateral_adaptive":
+            gray = cls.to_grayscale(crop)
+            bilateral = cv2.bilateralFilter(gray, 5, 50, 50)
+            thresh = cls.adaptive_threshold(bilateral, method="gaussian", block_size=15, c=3, invert=True)
+            return cls.remove_noise(thresh, kernel_size=1, operation="open")
+
+        if strat == "invert_thresh":
+            gray = cls.to_grayscale(crop)
+            _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
+            return thresh
 
         if strat == "adaptive_gaussian":
             gray = cls.to_grayscale(crop)
