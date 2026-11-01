@@ -354,3 +354,28 @@ class TestRecommendationEngine:
             assert step.delay_ms >= 0
             assert step.unit_count > 0
             assert len(step.troop_type) > 0
+
+    def test_economic_cost_and_net_gain_projection(
+        self, engine: RecommendationEngine
+    ) -> None:
+        reading = ResourceReading(gold=1_000_000, elixir=800_000, dark_elixir=8_000)
+        layout = BaseLayoutFeatures(
+            exposed_collector_ratio=0.85,
+            entry_points=[
+                {"sector": "South", "hazard_score": 0.15, "recommended": True},
+                {"sector": "North", "hazard_score": 0.85, "recommended": False},
+            ],
+        )
+        rec = engine.evaluate_base(reading, layout)
+        assert rec.estimated_army_cost["elixir"] > 0
+        assert rec.expected_net_gain["gold"] > 500_000
+        assert rec.expected_net_gain["elixir"] > 0
+        assert "Economic Projection:" in rec.explanation
+        assert "Recommended Attack Sector:" in rec.explanation
+
+        # Check rankings decoration
+        for ev in rec.rankings:
+            assert "elixir" in ev.estimated_cost
+            assert len(ev.pros) > 0
+            assert len(ev.cons) > 0
+            assert ev.recommended_entry_sector in ("South", "North", "East", "West")

@@ -34,6 +34,38 @@ from clashvision.decision.mass_dragon import MassDragonStrategy
 from clashvision.decision.custom_strategy import CustomStrategy, CustomStrategyConfig
 
 
+ARMY_TRAINING_COSTS: Dict[StrategyType, Dict[str, int]] = {
+    StrategyType.SNEAKY_GOBLIN: {"elixir": 25_000, "dark_elixir": 0},
+    StrategyType.BARCH: {"elixir": 30_000, "dark_elixir": 0},
+    StrategyType.MASS_MINER: {"elixir": 180_000, "dark_elixir": 0},
+    StrategyType.MASS_DRAGON: {"elixir": 240_000, "dark_elixir": 0},
+    StrategyType.CUSTOM: {"elixir": 120_000, "dark_elixir": 600},
+}
+
+STRATEGY_PROS_CONS: Dict[StrategyType, Dict[str, List[str]]] = {
+    StrategyType.SNEAKY_GOBLIN: {
+        "pros": ["High resource extraction speed", "Invisible to defenses for initial 5s", "Minimal elixir cost"],
+        "cons": ["Vulnerable to splash after cloak expires", "Low trophy preservation capacity"],
+    },
+    StrategyType.BARCH: {
+        "pros": ["Fastest army training time", "Extremely cheap elixir footprint", "Effective on exterior mines"],
+        "cons": ["Cannot penetrate core compartments", "Fragile against Mortars and Wizard Towers"],
+    },
+    StrategyType.MASS_MINER: {
+        "pros": ["Bypasses all wall compartments by burrowing", "High burst DPS under Heal spells"],
+        "cons": ["Expensive elixir training cost", "High risk against multi-target Inferno Towers"],
+    },
+    StrategyType.MASS_DRAGON: {
+        "pros": ["Immune to ground defenses, cannons, and mortars", "High health pool"],
+        "cons": ["Slow flight speed", "Severe vulnerability to focused Air Defenses and Air Sweepers"],
+    },
+    StrategyType.CUSTOM: {
+        "pros": ["Tailored unit composition", "Flexible tactical deployment"],
+        "cons": ["Unverified troop balance on unknown layouts"],
+    },
+}
+
+
 class RecommendationEngine:
     """
     Tactical decision and multi-strategy recommendation engine.
@@ -131,6 +163,20 @@ class RecommendationEngine:
                         ev_score -= 3.0
                 ev.score = round(max(0.0, min(100.0, ev_score)), 1)
 
+            # Decorate evaluation with economic cost, pros/cons, and recommended entry sector
+            cost = ARMY_TRAINING_COSTS.get(strat_type, {"elixir": 40_000, "dark_elixir": 0})
+            pros_cons = STRATEGY_PROS_CONS.get(strat_type, {"pros": [], "cons": []})
+            ev.estimated_cost = cost
+            ev.pros = list(pros_cons.get("pros", []))
+            ev.cons = list(pros_cons.get("cons", []))
+
+            rec_sector = "South"
+            if layout and layout.entry_points:
+                rec_pt = next((p for p in layout.entry_points if p.get("recommended")), None)
+                if rec_pt:
+                    rec_sector = str(rec_pt.get("sector", "South"))
+            ev.recommended_entry_sector = rec_sector
+
             evaluations.append(ev)
 
         # 3. Sort Rankings by Viability and Score (descending)
@@ -212,7 +258,20 @@ class RecommendationEngine:
         else:
             deployment_plan = []
 
-        # 6. Construct Explainable Rationale Text
+        # 6. Economic Cost and Net Gain Projections
+        primary_cost = ARMY_TRAINING_COSTS.get(primary_strategy_type, {"elixir": 40_000, "dark_elixir": 0})
+        gold_avail = (resources.gold or 0) if resources else 0
+        elixir_avail = (resources.elixir or 0) if resources else 0
+        de_avail = (resources.dark_elixir or 0) if resources else 0
+
+        harvest_rate = 0.85 if primary_strategy_type in (StrategyType.SNEAKY_GOBLIN, StrategyType.MASS_MINER) else 0.65
+        net_gain = {
+            "gold": int(gold_avail * harvest_rate),
+            "elixir": max(0, int(elixir_avail * harvest_rate) - primary_cost.get("elixir", 0)),
+            "dark_elixir": max(0, int(de_avail * harvest_rate) - primary_cost.get("dark_elixir", 0)),
+        }
+
+        # 7. Construct Explainable Rationale Text
         explanation = self._build_explanation(
             base_result=base_result,
             top_eval=top_eval,
@@ -220,6 +279,8 @@ class RecommendationEngine:
             resources=resources,
             layout=layout,
             suitability_score=suitability_score,
+            net_gain=net_gain,
+            army_cost=primary_cost,
         )
 
         return FarmingRecommendation(
@@ -230,6 +291,8 @@ class RecommendationEngine:
             score_breakdown=score_breakdown,
             timestamp=time.time(),
             explanation=explanation,
+            estimated_army_cost=primary_cost,
+            expected_net_gain=net_gain,
         )
 
     def _build_explanation(
@@ -240,6 +303,8 @@ class RecommendationEngine:
         resources: Optional[ResourceReading],
         layout: Optional[BaseLayoutFeatures],
         suitability_score: float,
+        net_gain: Optional[Dict[str, int]] = None,
+        army_cost: Optional[Dict[str, int]] = None,
     ) -> str:
         """Builds a rich, explainable tactical rationale for UI and logs."""
         parts: List[str] = []
@@ -275,7 +340,19 @@ class RecommendationEngine:
             f"Rationale: {' '.join(top_eval.reasons[:2])}"
         )
 
-        # 4. Comparative Alternative Summary
+        # 4. Economic ROI & Entry Sector
+        if army_cost and net_gain:
+            elix_cost = army_cost.get("elixir", 0)
+            de_cost = army_cost.get("dark_elixir", 0)
+            cost_str = f"{elix_cost:,} Elixir" + (f", {de_cost:,} DE" if de_cost > 0 else "")
+            net_str = f"{net_gain.get('gold', 0):,} Gold, {net_gain.get('elixir', 0):,} Elixir, {net_gain.get('dark_elixir', 0):,} DE"
+            entry_sec = top_eval.recommended_entry_sector or "South"
+            parts.append(
+                f"Economic Projection: Army Cost: {cost_str} | Projected Net Profit: {net_str}. "
+                f"Recommended Attack Sector: {entry_sec} flank."
+            )
+
+        # 5. Comparative Alternative Summary
         runners_up = [e for e in all_evals if e.strategy_type != top_eval.strategy_type and e.score > 0]
         if runners_up:
             alt_texts = [

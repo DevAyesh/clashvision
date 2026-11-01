@@ -340,6 +340,10 @@ class StrategyEvaluation:
     layout_suitability: float = 0.0
     prerequisites_met: bool = True
     reasons: List[str] = field(default_factory=list)
+    estimated_cost: Dict[str, int] = field(default_factory=dict)
+    pros: List[str] = field(default_factory=list)
+    cons: List[str] = field(default_factory=list)
+    recommended_entry_sector: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -351,6 +355,10 @@ class StrategyEvaluation:
             "layout_suitability": self.layout_suitability,
             "prerequisites_met": self.prerequisites_met,
             "reasons": self.reasons,
+            "estimated_cost": self.estimated_cost,
+            "pros": self.pros,
+            "cons": self.cons,
+            "recommended_entry_sector": self.recommended_entry_sector,
         }
 
 
@@ -396,6 +404,8 @@ class FarmingRecommendation:
     score_breakdown: Dict[str, float] = field(default_factory=dict)
     timestamp: float = 0.0
     explanation: str = ""
+    estimated_army_cost: Dict[str, int] = field(default_factory=dict)
+    expected_net_gain: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -406,6 +416,8 @@ class FarmingRecommendation:
             "score_breakdown": self.score_breakdown,
             "timestamp": self.timestamp,
             "explanation": self.explanation,
+            "estimated_army_cost": self.estimated_army_cost,
+            "expected_net_gain": self.expected_net_gain,
         }
 
 
