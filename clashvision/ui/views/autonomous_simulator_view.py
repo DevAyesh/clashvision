@@ -259,6 +259,10 @@ class AutonomousSimulatorView(QWidget):
         self.btn_apply_conf.clicked.connect(self._on_apply_config)
         config_layout.addWidget(self.btn_apply_conf)
 
+        self.btn_export_analytics = QPushButton("📊 Export Session Analytics")
+        self.btn_export_analytics.clicked.connect(self._on_export_session)
+        config_layout.addWidget(self.btn_export_analytics)
+
         config_layout.addStretch()
         body_split.addWidget(config_frame, stretch=1)
 
@@ -335,6 +339,11 @@ class AutonomousSimulatorView(QWidget):
         self.engine.target_selector.update_config(filter_conf)
         self._append_log("INFO", "Autonomous farming configuration updated.")
 
+    def _on_export_session(self) -> None:
+        """Exports session stats summary to JSON/Log."""
+        s = self.engine.stats.to_dict()
+        self._append_log("INFO", f"Exported Session [{s.get('session_id')}]: {s.get('total_cycles_completed')} cycles, G: {s.get('total_gold_acquired'):,}, E: {s.get('total_elixir_acquired'):,}")
+
     def _handle_state_change(self, old: FarmingState, new: FarmingState, payload: Dict[str, Any]) -> None:
         st_name = new.value
         color = "#00d26a" if new.is_active else ("#ff4757" if new == FarmingState.ERROR else "#70a1ff")
@@ -346,16 +355,20 @@ class AutonomousSimulatorView(QWidget):
         cycle_num = data.get("cycle_number", 0)
         max_c = self.engine.config.max_cycles
 
+        skips = stats.get("total_bases_skipped", 0)
+        streak = stats.get("consecutive_skips", 0)
+        max_streak = stats.get("max_consecutive_skips", 0)
         self.lbl_cycles.setText(f"{cycle_num} / {max_c if max_c > 0 else '∞'}")
-        self.lbl_skipped.setText(f"{stats.get('total_bases_skipped', 0)} targets")
+        self.lbl_skipped.setText(f"{skips} skipped (Streak: {streak}, Max: {max_streak})")
         self.lbl_gold.setText(f"Gold: {stats.get('total_gold_acquired', 0):,}")
         self.lbl_elixir.setText(f"Elixir: {stats.get('total_elixir_acquired', 0):,}")
         self.lbl_de.setText(f"DE: {stats.get('total_dark_elixir_acquired', 0):,}")
         self.lbl_stars.setText(f"⭐ {stats.get('total_stars', 0)} Stars")
 
         r_rates = stats.get("resources_per_hour", {})
+        lat = stats.get("average_cycle_latency_ms", 0.0)
         self.lbl_rate.setText(
-            f"Rate: {r_rates.get('gold', 0):,.0f} G/hr • {r_rates.get('elixir', 0):,.0f} E/hr • {r_rates.get('dark_elixir', 0):,.0f} DE/hr"
+            f"Rate: {r_rates.get('gold', 0):,.0f} G/hr • {r_rates.get('elixir', 0):,.0f} E/hr • Latency: {lat:.0f}ms"
         )
 
         strats = stats.get("strategy_counts", {})

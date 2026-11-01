@@ -84,7 +84,10 @@ class BaseLayoutAnalyzer:
 
             if is_coll:
                 total_collectors += 1
-                if getattr(b, "is_exposed", False) or is_perim:
+                if hasattr(b, "is_exposed"):
+                    if getattr(b, "is_exposed", False):
+                        exposed_collectors += 1
+                elif is_perim:
                     exposed_collectors += 1
 
             if is_coll or is_stor:

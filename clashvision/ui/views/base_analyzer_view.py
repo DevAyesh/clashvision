@@ -104,6 +104,10 @@ class BaseAnalyzerView(QWidget):
         self.split_label = QLabel("Exposed Collectors: 50.0% | Core: 50.0%")
         self.split_label.setStyleSheet("color: #a4b0be; font-size: 11px;")
         split_layout.addWidget(self.split_label)
+
+        self.topology_summary_label = QLabel("Symmetry: -- | Difficulty: -- | Accessibility: --")
+        self.topology_summary_label.setStyleSheet("color: #70a1ff; font-size: 11px; margin-top: 4px;")
+        split_layout.addWidget(self.topology_summary_label)
         metrics_layout.addWidget(split_card)
 
         # Suitability Score Breakdown
@@ -157,6 +161,19 @@ class BaseAnalyzerView(QWidget):
                 self.th_badge.setStyleSheet(
                     f"background-color: #3b2a12; color: #ffa502; border: 1px solid #ffa502; border-radius: 4px; padding: 4px 8px; font-weight: bold;"
                 )
+
+            symm = getattr(layout, "symmetry_score", 0.0) * 100
+            diff = getattr(layout, "difficulty_score", 0.0) * 100
+            access = getattr(layout, "resource_accessibility_score", 0.0) * 100
+            rec_entry = "South"
+            if getattr(layout, "entry_points", None):
+                rec_pt = next((p for p in layout.entry_points if p.get("recommended")), None)
+                if rec_pt:
+                    rec_entry = f"{rec_pt.get('sector', 'South')} (Hazard: {rec_pt.get('hazard_score', 0.2):.2f})"
+            self.topology_summary_label.setText(
+                f"Symmetry: {symm:.0f}% | Difficulty: {diff:.0f}% | Accessibility: {access:.0f}%\n"
+                f"Recommended Entry: {rec_entry}"
+            )
 
         if rec is not None:
             bd = rec.score_breakdown or {}

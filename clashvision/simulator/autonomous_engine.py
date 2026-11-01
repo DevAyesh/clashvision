@@ -101,6 +101,9 @@ class AutonomousSessionStats:
     strategy_wins: Dict[str, int] = field(default_factory=dict)
     ocr_failures: int = 0
     recovery_attempts: int = 0
+    consecutive_skips: int = 0
+    max_consecutive_skips: int = 0
+    skip_reasons: Dict[str, int] = field(default_factory=dict)
     cycle_latencies_ms: List[float] = field(default_factory=list)
 
     @property
@@ -139,6 +142,9 @@ class AutonomousSessionStats:
             "total_cycles_completed": self.total_cycles_completed,
             "total_bases_evaluated": self.total_bases_evaluated,
             "total_bases_skipped": self.total_bases_skipped,
+            "consecutive_skips": self.consecutive_skips,
+            "max_consecutive_skips": self.max_consecutive_skips,
+            "skip_reasons": self.skip_reasons,
             "total_attacks_performed": self.total_attacks_performed,
             "total_gold_acquired": self.total_gold_acquired,
             "total_elixir_acquired": self.total_elixir_acquired,
@@ -200,6 +206,7 @@ class AutonomousEngine:
         self._on_cycle_callbacks: List[Callable[[Dict[str, Any]], None]] = []
         self._on_log_callbacks: List[Callable[[str, str], None]] = []
         self._on_state_callbacks: List[Callable[[FarmingState, FarmingState, Dict[str, Any]], None]] = []
+        self._on_error_callbacks: List[Callable[[str], None]] = []
 
         # Wire state machine listener
         self.state_machine.add_listener(self._handle_state_transition)
@@ -227,6 +234,17 @@ class AutonomousEngine:
     def add_state_listener(self, callback: Callable[[FarmingState, FarmingState, Dict[str, Any]], None]) -> None:
         if callback not in self._on_state_callbacks:
             self._on_state_callbacks.append(callback)
+
+    def add_error_listener(self, callback: Callable[[str], None]) -> None:
+        if callback not in self._on_error_callbacks:
+            self._on_error_callbacks.append(callback)
+
+    def _emit_error(self, err_msg: str) -> None:
+        for cb in self._on_error_callbacks:
+            try:
+                cb(err_msg)
+            except Exception as ex:
+                logger.error("Error listener callback exception: %s", ex)
 
     def _emit_log(self, level: str, message: str) -> None:
         logger.info("[%s] %s", level, message)
@@ -377,15 +395,17 @@ class AutonomousEngine:
 
             # Clean session shutdown (preserve ERROR if emergency stop or error tripped)
             self.stats.end_time = time.time()
-            if not self.barrier.is_emergency_stop_tripped and self.current_state != FarmingState.ERROR:
+            if not self.barrier.is_emergency_stopped and self.current_state != FarmingState.ERROR:
                 if self.state_machine.can_transition_to(FarmingState.STOPPED):
                     self.state_machine.transition_to(FarmingState.STOPPED, trigger="run_loop_complete")
 
         except EmergencyStopTriggered:
             self.state_machine.trigger_error("Emergency stop triggered during cycle")
+            self._emit_error("Emergency stop triggered during cycle")
         except Exception as ex:
             logger.exception("Fatal unhandled exception in AutonomousEngine: %s", ex)
             self.state_machine.trigger_error(str(ex))
+            self._emit_error(str(ex))
         finally:
             self.stats.end_time = time.time()
             try:
@@ -449,6 +469,7 @@ class AutonomousEngine:
                 target_found = True
                 target_frame = candidate_frame
                 target_layout = simulated_layout
+                self.stats.consecutive_skips = 0
                 self._emit_log(
                     "INFO",
                     f"Target Found! [Attempt #{search_attempts}] "
@@ -457,6 +478,11 @@ class AutonomousEngine:
                 )
             else:
                 self.stats.total_bases_skipped += 1
+                self.stats.consecutive_skips += 1
+                self.stats.max_consecutive_skips = max(self.stats.max_consecutive_skips, self.stats.consecutive_skips)
+                prim_reason = target_eval.reasons[0] if target_eval.reasons else "Unmet Thresholds"
+                self.stats.skip_reasons[prim_reason] = self.stats.skip_reasons.get(prim_reason, 0) + 1
+
                 if self.state_machine.can_transition_to(FarmingState.SKIPPING_BASE):
                     self.state_machine.transition_to(FarmingState.SKIPPING_BASE, trigger="loot_below_threshold")
                 self._emit_log(

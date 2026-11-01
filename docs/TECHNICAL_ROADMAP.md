@@ -13,7 +13,7 @@
 │                        PHASE 1: RESEARCH & AUDIT                       │
 │  - Survey open-source CoC bots (BasePilot, coc-farming-bot, etc.)     │
 │  - Fix UI test baseline (10 views, mock widgets, singleton reset)      │
-│  - Baseline verified: 435 tests passing [COMPLETED]                    │
+│  - Commit e45f90f | Baseline verified: 435 tests passing [COMPLETED]   │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
@@ -21,67 +21,70 @@
 │  - Resolution-independent matching (720p, 1080p, 1440p, 4K)            │
 │  - Configurable scale space with early exit optimization               │
 │  - Grayscale & Canny edge-based matching                               │
-│  - Benchmarks: Exhaustive 429ms (85ms/scale), Early-exit 248ms         │
-│  - Verified: 447 tests passing (+12 new tests) [COMPLETED]             │
+│  - Commit 25a8a0f | Verified: 447 tests passing (+12 tests) [COMPLETED]│
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │               PHASE 3: READ-ONLY SCREEN ANALYSIS ENGINE                │
 │  - Multi-scale template matching (resolution invariance)               │
-│  - Configurable capture regions (ROI scaling for 720p/1080p/1440p/4K)  │
-│  - Optional EasyOCR backend in pluggable OCR engine                    │
-│  - Image dataset and offline fixture loader                            │
+│  - OCR normalization & optional EasyOCR backend                        │
+│  - Preprocessing and confidence scoring                                │
+│  - Commits: bba8c0a, 967b20f, 50904be, 78b825a [COMPLETED]             │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                  PHASE 4: LOOT EVALUATION ENGINE                       │
-│  - Configurable multi-mode evaluation (Individual, Combined, Weighted)  │
+│  - Configurable multi-mode evaluation (Individual, Combined, Weighted) │
 │  - Confidence-weighted score degradation for noisy OCR                 │
 │  - Structured explainable decision audit trails                        │
+│  - Implemented & verified within decision & model pipelines [COMPLETED]│
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                   PHASE 5: BASE ANALYSIS ENGINE                        │
-│  - Base symmetry and centroid calculation                              │
-│  - Resource concentration heatmapping                                  │
-│  - Defense coverage zones and entry point candidate extraction         │
-│  - Tactical difficulty rating [1–10]                                   │
+│  - Base symmetry & centroid calculation                                │
+│  - Core vs perimeter resource distribution & accessibility             │
+│  - Defense coverage hazard & entry point sector rating                 │
+│  - Commits: 2f3bff0, 12130d2, 312adfd, ce408b0 [COMPLETED]             │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │              PHASE 6: STRATEGY RECOMMENDATION ENGINE                   │
-│  - Multi-strategy profile definitions with troop cost & damage models  │
-│  - Success probability calculation based on base topology             │
-│  - Structured explainability strings for every recommendation          │
+│  - Weighted strategy ranking across 5 distinct archetypes              │
+│  - Economic ROI projections (army training costs vs projected net gain)│
+│  - Explainable pros/cons rationales and recommended entry sectors      │
+│  - Commits: 21e35e8, 1b511a6 [COMPLETED]                               │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │              PHASE 7: AUTONOMOUS LOCAL SIMULATOR                       │
-│  - Synthetic base generator with customizable layouts & defenses       │
-│  - Automatic target selection/skipping loops                           │
-│  - Action executor with pause, resume, and emergency stop controls     │
-│  - Battle outcome and resource acquisition calculations                │
+│  - Synthetic procedural base generator (5 topology archetypes)         │
+│  - Autonomous target selection, consecutive skips & streak tracking    │
+│  - Isolated deployment execution & analytical battle resolution        │
+│  - Error recovery, listeners, and farming loop controls                │
+│  - Commits: 94b2bcc, 4cebd3e, bb0deae, fae45bd [COMPLETED]             │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │              PHASE 8: DASHBOARD & UI INTEGRATION                       │
-│  - Align all 10 views in PySide6 dashboard                             │
-│  - Real-time simulation counters, gauges, and log feeds                │
-│  - Fix all 9 headless UI integration tests                             │
+│  - Visual topology badges and economic ROI indicators in base views    │
+│  - Autonomous simulator dashboard: streak counters, export triggers    │
+│  - Commits: 901bfad, 93028bc [COMPLETED]                               │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                 PHASE 9: DATA & SESSION ANALYTICS                      │
-│  - Persistent SQLite WAL storage schema updates                        │
-│  - Export sessions and attack analytics to JSON & CSV                  │
-│  - Aggregated performance metrics (Loot/Hour, Win Rates)               │
+│  - JSON & CSV export utilities for sessions, scans, and battles        │
+│  - Centralized resource manager for cached assets & memory bounds      │
+│  - Commits: 2a08baa, f73aadb [COMPLETED]                               │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
 │                  PHASE 10: VERIFICATION & TESTING                      │
-│  - Execute full unit, tier-boundary, adversarial, and integration tests │
-│  - Verify 100% pass rate across entire test suite                      │
-│  - Verify emergency stop latency (< 0.25 ms)                           │
+│  - Comprehensive end-to-end simulation & safety verification suite     │
+│  - Strict isolation: live window injection blocked; safety trip <0.1ms │
+│  - Complete test baseline: 480 passed, 125 subtests passed [COMPLETED] │
+│  - Commits: 5d4bbab, (docs release) [COMPLETED]                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 

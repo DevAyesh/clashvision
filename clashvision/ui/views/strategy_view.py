@@ -133,9 +133,27 @@ class StrategyView(QWidget):
 
         # Update primary strategy details
         primary_name = rec.primary_strategy.display_name if hasattr(rec.primary_strategy, "display_name") else str(rec.primary_strategy)
+        army_cost_str = ""
+        if rec.estimated_army_cost:
+            elix = rec.estimated_army_cost.get("elixir", 0)
+            de = rec.estimated_army_cost.get("dark_elixir", 0)
+            army_cost_str = f"Estimated Training Cost: {elix:,} Elixir" + (f", {de:,} DE" if de > 0 else "")
+        net_gain_str = ""
+        if rec.expected_net_gain:
+            ng = rec.expected_net_gain
+            net_gain_str = f"Projected Net Profit: {ng.get('gold', 0):,} Gold | {ng.get('elixir', 0):,} Elixir | {ng.get('dark_elixir', 0):,} DE"
+
+        extra_info = []
+        if army_cost_str:
+            extra_info.append(army_cost_str)
+        if net_gain_str:
+            extra_info.append(net_gain_str)
+        extra_block = "\n".join(extra_info) + "\n" if extra_info else ""
+
         self.troops_summary_label.setText(
             f"Selected Strategy: {primary_name}\n"
             f"Suitability Score: {rec.suitability_score:.1f} / 100\n"
+            f"{extra_block}"
             f"Tactical Rationale: {rec.explanation}"
         )
 
