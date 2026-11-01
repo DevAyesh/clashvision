@@ -52,10 +52,15 @@ class BaseLayoutAnalyzer:
         """
         total_collectors = 0
         exposed_collectors = 0
+        core_resources = 0
+        perimeter_resources = 0
         air_defenses: List[Tuple[int, int]] = []
         th_accessible = getattr(model, "th_accessible", False)
         th_level: Optional[int] = None
         has_walls = len(getattr(model, "wall_coordinates", [])) > 0
+        center_x = self.ref_w / 2.0
+        center_y = self.ref_h / 2.0
+        max_dist = math.sqrt(center_x ** 2 + center_y ** 2)
 
         for b in getattr(model, "buildings", []):
             try:
@@ -69,11 +74,24 @@ class BaseLayoutAnalyzer:
             # Convert normalized [0, 1] to reference pixels if necessary
             px = int(round(bx * self.ref_w)) if 0.0 <= bx <= 1.0 else int(round(bx))
             py = int(round(by * self.ref_h)) if 0.0 <= by <= 1.0 else int(round(by))
+            b_name = getattr(b, "name", "").lower()
 
-            if getattr(b, "is_collector", False):
+            is_coll = getattr(b, "is_collector", False) or any(k in b_name for k in ("collector", "mine", "drill"))
+            is_stor = getattr(b, "is_storage", False) or "storage" in b_name
+
+            dist = math.sqrt((px - center_x) ** 2 + (py - center_y) ** 2)
+            is_perim = dist > (max_dist * 0.32) or getattr(b, "is_exposed", False)
+
+            if is_coll:
                 total_collectors += 1
-                if getattr(b, "is_exposed", False):
+                if getattr(b, "is_exposed", False) or is_perim:
                     exposed_collectors += 1
+
+            if is_coll or is_stor:
+                if is_perim:
+                    perimeter_resources += 1
+                else:
+                    core_resources += 1
 
             if getattr(b, "is_air_defense", False):
                 air_defenses.append((px, py))
@@ -103,6 +121,19 @@ class BaseLayoutAnalyzer:
         wall_coords = getattr(model, "wall_coordinates", [])
         compartment_count = max(1, len(wall_coords) // 25) if has_walls else 0
 
+        total_res = core_resources + perimeter_resources
+        if total_res > 0:
+            core_ratio = float(core_resources) / float(total_res)
+            perim_ratio = float(perimeter_resources) / float(total_res)
+        else:
+            if getattr(model, "dead_base", False):
+                core_ratio, perim_ratio = 0.15, 0.85
+            else:
+                core_ratio = 0.50
+                perim_ratio = ratio
+
+        access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartment_count / 10.0))))
+
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(ratio, 3),
             th_accessible=bool(th_accessible),
@@ -110,10 +141,15 @@ class BaseLayoutAnalyzer:
             air_defense_locations=air_defenses,
             compartment_count=compartment_count,
             wall_perimeter_intact=has_walls,
+            core_resource_ratio=round(core_ratio, 3),
+            perimeter_resource_ratio=round(perim_ratio, 3),
+            resource_accessibility_score=round(access_score, 3),
             metadata={
                 "layout_type": str(getattr(model, "layout_type", "UNKNOWN")),
                 "total_collectors": total_collectors,
                 "exposed_collectors": exposed_collectors,
+                "core_resources": core_resources,
+                "perimeter_resources": perimeter_resources,
                 "total_walls": len(wall_coords),
                 "storages_in_core": getattr(model, "storages_in_core", True),
                 "dead_base": getattr(model, "dead_base", False),
@@ -220,11 +256,16 @@ class BaseLayoutAnalyzer:
                         exposed_collectors += 1
 
         exp_ratio = float(exposed_collectors) / float(total_collectors) if total_collectors > 0 else 0.0
+        core_collectors = total_collectors - exposed_collectors
+        core_ratio = float(core_collectors) / float(total_collectors) if total_collectors > 0 else 0.5
+        perim_ratio = exp_ratio
 
         # 4. Detect Walls (Gray pixels: S < 40, 120 < V < 220)
         wall_mask = cv2.inRange(hsv, np.array([0, 0, 120]), np.array([180, 40, 220]))
         wall_contours, _ = cv2.findContours(wall_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         compartments = sum(1 for c in wall_contours if cv2.contourArea(c) > 150)
+
+        access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartments / 10.0))))
 
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(exp_ratio, 3),
@@ -233,10 +274,26 @@ class BaseLayoutAnalyzer:
             air_defense_locations=air_defenses,
             compartment_count=max(1, compartments),
             wall_perimeter_intact=compartments > 0,
+            core_resource_ratio=round(core_ratio, 3),
+            perimeter_resource_ratio=round(perim_ratio, 3),
+            resource_accessibility_score=round(access_score, 3),
             metadata={
                 "detected_collectors": total_collectors,
                 "detected_exposed": exposed_collectors,
+                "detected_core": core_collectors,
                 "th_coordinates": th_pos,
                 "air_defense_count": len(air_defenses),
             },
         )
+
+    def analyze_resource_distribution(self, source: Any) -> Dict[str, float]:
+        """
+        Direct convenience method for evaluating resource accessibility and distribution.
+        """
+        features = self.analyze_layout(source)
+        return {
+            "core_resource_ratio": features.core_resource_ratio,
+            "perimeter_resource_ratio": features.perimeter_resource_ratio,
+            "resource_accessibility_score": features.resource_accessibility_score,
+            "exposed_collector_ratio": features.exposed_collector_ratio,
+        }

@@ -299,6 +299,13 @@ class BaseLayoutFeatures:
     air_defense_locations: List[Tuple[int, int]] = field(default_factory=list)
     compartment_count: int = 0
     wall_perimeter_intact: bool = True
+    core_resource_ratio: float = 0.0
+    perimeter_resource_ratio: float = 0.0
+    resource_accessibility_score: float = 0.0
+    symmetry_score: float = 0.0
+    difficulty_score: float = 0.0
+    entry_points: List[Dict[str, Any]] = field(default_factory=list)
+    defense_hazards: Dict[str, float] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -309,6 +316,13 @@ class BaseLayoutFeatures:
             "air_defense_locations": self.air_defense_locations,
             "compartment_count": self.compartment_count,
             "wall_perimeter_intact": self.wall_perimeter_intact,
+            "core_resource_ratio": round(float(self.core_resource_ratio), 3),
+            "perimeter_resource_ratio": round(float(self.perimeter_resource_ratio), 3),
+            "resource_accessibility_score": round(float(self.resource_accessibility_score), 3),
+            "symmetry_score": round(float(self.symmetry_score), 3),
+            "difficulty_score": round(float(self.difficulty_score), 3),
+            "entry_points": self.entry_points,
+            "defense_hazards": self.defense_hazards,
             "metadata": self.metadata,
         }
 
