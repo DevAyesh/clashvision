@@ -37,8 +37,8 @@ class BaseLayoutAnalyzer:
         if source is None:
             return BaseLayoutFeatures()
 
-        # Check if source is a BaseLayoutModel (duck typing)
-        if hasattr(source, "buildings") and hasattr(source, "exposed_collector_ratio"):
+        # Check if source is a BaseLayoutModel or object with building entities (duck typing)
+        if hasattr(source, "buildings") or hasattr(source, "wall_coordinates"):
             return self._analyze_model(source)
 
         if isinstance(source, np.ndarray):
