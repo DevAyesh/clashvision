@@ -98,3 +98,4 @@ def get_resource_manager() -> ResourceManager:
     if _global_resource_manager is None:
         _global_resource_manager = ResourceManager()
     return _global_resource_manager
+

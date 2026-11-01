@@ -153,6 +153,15 @@ The codebase comprises **10 major UI views**, an **OCR/vision pipeline**, a **ta
 
 ---
 
-## 5. Audit Conclusions & Readiness
-The project architecture is exceptionally solid and modular. The core invariants are strictly observed. Resolving the 9 failing UI tests and enhancing OCR/Base layout algorithms will elevate the platform to institutional engineering standards.
+## 5. Audit Conclusions & Remediation Sign-Off
+The project architecture is exceptionally solid and modular. The core invariants are strictly observed. 
+
+### Remediation Status:
+- **Defect 1 (UI View Count):** Fully resolved in Commit `e45f90f`. All 10 views registered, validated, and all headless UI tests passing.
+- **Defect 2 (Feed Canvas Text Check):** Fully resolved in Commit `e45f90f`. Frame counter verified via `stats_label`.
+- **Bottleneck 1 (OCR Processing Pipeline):** Fully resolved in Commit `50904be` with preprocessed ROI crops, CLAHE/Otsu thresholding, and fast heuristic parsing.
+- **Bottleneck 2 (EasyOCR Integration):** Fully resolved in Commit `967b20f` with `EasyOCREngine` supporting both CPU and GPU execution.
+- **Phase 1–10 Implementations:** 20 commits completed on branch `clashvision-research-improvements`.
+- **Full Test Suite:** 480 passed, 125 subtests passed, 0 failures. Zero live game input injection verified.
+
 

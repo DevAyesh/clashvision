@@ -260,9 +260,13 @@ class RecommendationEngine:
 
         # 6. Economic Cost and Net Gain Projections
         primary_cost = ARMY_TRAINING_COSTS.get(primary_strategy_type, {"elixir": 40_000, "dark_elixir": 0})
-        gold_avail = (resources.gold or 0) if resources else 0
-        elixir_avail = (resources.elixir or 0) if resources else 0
-        de_avail = (resources.dark_elixir or 0) if resources else 0
+        raw_gold = (resources.gold or 0) if resources else 0
+        raw_elixir = (resources.elixir or 0) if resources else 0
+        raw_de = (resources.dark_elixir or 0) if resources else 0
+
+        gold_avail = int(raw_gold) if (isinstance(raw_gold, (int, float)) and math.isfinite(raw_gold)) else 0
+        elixir_avail = int(raw_elixir) if (isinstance(raw_elixir, (int, float)) and math.isfinite(raw_elixir)) else 0
+        de_avail = int(raw_de) if (isinstance(raw_de, (int, float)) and math.isfinite(raw_de)) else 0
 
         harvest_rate = 0.85 if primary_strategy_type in (StrategyType.SNEAKY_GOBLIN, StrategyType.MASS_MINER) else 0.65
         net_gain = {
