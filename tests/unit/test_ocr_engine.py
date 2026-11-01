@@ -20,6 +20,7 @@ from clashvision.vision.ocr_engine import (
     MockOCREngine,
     PytesseractEngine,
     RapidOCREngine,
+    EasyOCREngine,
     get_ocr_engine,
 )
 from clashvision.vision.preprocessor import VisionPreprocessor, OCRDebugData
@@ -128,6 +129,24 @@ class TestRapidOCREngine(unittest.TestCase):
         self.assertEqual(result, "RapidFallback")
 
 
+class TestEasyOCREngine(unittest.TestCase):
+    """Verifies EasyOCR engine abstraction and graceful fallback."""
+
+    def test_engine_name(self):
+        engine = EasyOCREngine()
+        self.assertEqual(engine.engine_name, "EasyOCR")
+
+    def test_easyocr_fallback_when_uninstalled(self):
+        mock_fb = MockOCREngine(default_text="EasyFallback", default_confidence=0.91)
+        engine = EasyOCREngine(fallback_engine=mock_fb)
+        crop = np.zeros((40, 160, 3), dtype=np.uint8)
+        result = engine.recognize_text(crop)
+        self.assertEqual(result, "EasyFallback")
+        text, conf = engine.recognize_with_confidence(crop)
+        self.assertEqual(text, "EasyFallback")
+        self.assertEqual(conf, 0.91)
+
+
 class TestGetOCREngineFactory(unittest.TestCase):
     """Verifies get_ocr_engine factory method."""
 
@@ -143,6 +162,10 @@ class TestGetOCREngineFactory(unittest.TestCase):
     def test_get_rapidocr_engine(self):
         engine = get_ocr_engine("rapidocr")
         self.assertIsInstance(engine, RapidOCREngine)
+
+    def test_get_easyocr_engine(self):
+        engine = get_ocr_engine("easyocr")
+        self.assertIsInstance(engine, EasyOCREngine)
 
     def test_get_auto_engine_never_crashes(self):
         engine = get_ocr_engine("auto")
