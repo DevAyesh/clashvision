@@ -384,6 +384,9 @@ if IS_HEADLESS_FALLBACK:
         def addStretch(self, stretch: int = 0) -> None:
             pass
 
+        def addSpacing(self, size: int = 0) -> None:
+            pass
+
         def setContentsMargins(self, left: int, top: int, right: int, bottom: int) -> None:
             pass
 
@@ -602,6 +605,7 @@ if IS_HEADLESS_FALLBACK:
         def toPlainText(self) -> str: return self._text
         def append(self, text: str) -> None: self._text += f"\n{text}"
         def clear(self) -> None: self._text = ""
+        def setReadOnly(self, ro: bool) -> None: pass
 
     QTextEdit = MockTextEdit
 

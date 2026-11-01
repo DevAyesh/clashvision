@@ -71,6 +71,10 @@ def memory_repo() -> Generator[Repository, None, None]:
 @pytest.fixture
 def test_window(qapp, memory_repo: Repository) -> Generator[MainWindow, None, None]:
     """MainWindow instance wired to in-memory database with workers stopped."""
+    from clashvision.capture.safety_guard import get_safety_guard
+    from clashvision.simulator.safety_barrier import SafetyBarrier
+    get_safety_guard().reset_emergency_stop()
+    SafetyBarrier.get_instance().reset_emergency_stop()
     win = MainWindow(repo=memory_repo, start_workers=False)
     yield win
     win.stop_all_workers()
@@ -82,15 +86,15 @@ def test_window(qapp, memory_repo: Repository) -> Generator[MainWindow, None, No
 # =============================================================================
 
 class TestAdversarialViewSwitching:
-    """Stress tests rapid navigation across all 9 views in MainWindow."""
+    """Stress tests rapid navigation across all 10 views in MainWindow."""
 
     def test_rapid_view_switching_100_cycles(self, test_window: MainWindow, qapp) -> None:
-        """Switch views 180 times sequentially and in reverse, verifying UI consistency."""
+        """Switch views 200 times sequentially and in reverse, verifying UI consistency."""
         num_views = test_window.stacked_widget.count()
-        assert num_views == 9
+        assert num_views == 10
 
         start_t = time.perf_counter()
-        # 10 full sweeps back and forth (180 transitions)
+        # 10 full sweeps back and forth (200 transitions)
         for cycle in range(10):
             for idx in range(num_views):
                 test_window.switch_view(idx)
@@ -103,11 +107,11 @@ class TestAdversarialViewSwitching:
 
         qapp.processEvents()
         elapsed = time.perf_counter() - start_t
-        assert elapsed < 1.0, f"View switching was too slow: {elapsed:.3f}s for 180 transitions"
+        assert elapsed < 1.0, f"View switching was too slow: {elapsed:.3f}s for 200 transitions"
 
     def test_rapid_sidebar_button_clicks(self, test_window: MainWindow, qapp) -> None:
         """Rapidly click every sidebar button directly simulating frenetic user input."""
-        assert len(test_window.nav_buttons) == 9
+        assert len(test_window.nav_buttons) == 10
 
         for _ in range(5):
             for idx, btn in enumerate(test_window.nav_buttons):
@@ -121,7 +125,7 @@ class TestAdversarialViewSwitching:
         assert test_window.stacked_widget.currentIndex() == 0
 
         # Negative and excessive integer indices
-        for invalid_idx in [-1, -99, 9, 10, 100, 9999]:
+        for invalid_idx in [-1, -99, 10, 11, 100, 9999]:
             test_window.switch_view(invalid_idx)
             # Index should remain unchanged at 0
             assert test_window.stacked_widget.currentIndex() == 0
@@ -136,9 +140,9 @@ class TestAdversarialViewSwitching:
 
     def test_view_mode_indicator_transitions(self, test_window: MainWindow) -> None:
         """Verify Simulator view displays Purple Simulation mode, all others display Green Observation mode."""
-        for idx in range(9):
+        for idx in range(10):
             test_window.switch_view(idx)
-            if idx == 4:  # Simulator view
+            if idx in (4, 5):  # Simulator or Auto Simulator view
                 assert "LOCAL SIMULATION" in test_window.mode_indicator.text()
                 assert "OFFLINE REPLAY" in test_window.mode_indicator.text()
             else:
@@ -159,7 +163,7 @@ class TestAdversarialViewSwitching:
             primary_strategy=StrategyType.SNEAKY_GOBLIN,
         )
 
-        for idx in range(9):
+        for idx in range(10):
             test_window.switch_view(idx)
             # Ingest data during transition
             test_window._on_frame_captured(packet)
@@ -197,9 +201,9 @@ db = DatabaseManager(db_path=":memory:", auto_init=True)
 repo = Repository(db=db)
 win = MainWindow(repo=repo, start_workers=False)
 
-# Test 9 views
-assert win.stacked_widget.count() == 9, "Must contain 9 views"
-for idx in range(9):
+# Test 10 views
+assert win.stacked_widget.count() == 10, "Must contain 10 views"
+for idx in range(10):
     win.switch_view(idx)
     assert win.stacked_widget.currentIndex() == idx
 

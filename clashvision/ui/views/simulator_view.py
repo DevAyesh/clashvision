@@ -163,6 +163,7 @@ class SimulatorView(QWidget):
         main_layout.addWidget(controls_panel)
 
     def _on_start(self) -> None:
+        self._emergency_stopped = False
         self.sig_start.emit()
 
     def _on_pause(self) -> None:
@@ -178,6 +179,7 @@ class SimulatorView(QWidget):
         self.sig_step_backward.emit()
 
     def _on_reset(self) -> None:
+        self._emergency_stopped = False
         self.sig_reset.emit()
 
     def _on_speed_slider_changed(self, value: int) -> None:
@@ -186,6 +188,7 @@ class SimulatorView(QWidget):
         self.sig_speed_changed.emit(speed_factor)
 
     def _on_emergency_stop(self) -> None:
+        self._emergency_stopped = True
         self.sig_emergency_stop.emit()
         self.canvas_label.setText("EMERGENCY STOP TRIGGERED: Playback halted immediately.")
 
@@ -198,6 +201,10 @@ class SimulatorView(QWidget):
             f"Step: {state.step_index} / {state.total_steps} | Active Troops: {len(state.active_troops)}"
         )
         self.scrubber.setValue(int(state.progress_fraction * 1000))
+
+        if getattr(self, "_emergency_stopped", False):
+            self.canvas_label.setText("EMERGENCY STOP TRIGGERED: Playback halted immediately.")
+            return
 
         if state.is_playing:
             self.canvas_label.setText(
