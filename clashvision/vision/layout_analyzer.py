@@ -135,6 +135,17 @@ class BaseLayoutAnalyzer:
         access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartment_count / 10.0))))
         symm_score = self.compute_base_symmetry(model)
 
+        # Tactical entry points & defense hazards
+        entry_sectors = self.evaluate_entry_points(model)
+        defense_hazards = {s["sector"]: s["hazard_score"] for s in entry_sectors}
+
+        # Base difficulty score [0.0, 1.0]
+        comp_factor = min(1.0, compartment_count / 8.0)
+        col_factor = 1.0 - ratio
+        th_factor = 0.2 if th_accessible else 0.8
+        diff_score = 0.35 * comp_factor + 0.35 * col_factor + 0.20 * th_factor + 0.10 * (1.0 - access_score)
+        diff_score = float(max(0.05, min(0.98, diff_score)))
+
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(ratio, 3),
             th_accessible=bool(th_accessible),
@@ -146,6 +157,9 @@ class BaseLayoutAnalyzer:
             perimeter_resource_ratio=round(perim_ratio, 3),
             resource_accessibility_score=round(access_score, 3),
             symmetry_score=round(symm_score, 3),
+            difficulty_score=round(diff_score, 3),
+            entry_points=entry_sectors,
+            defense_hazards=defense_hazards,
             metadata={
                 "layout_type": str(getattr(model, "layout_type", "UNKNOWN")),
                 "total_collectors": total_collectors,
@@ -270,6 +284,16 @@ class BaseLayoutAnalyzer:
         access_score = max(0.0, min(1.0, 0.85 * perim_ratio + 0.15 * max(0.0, 1.0 - (compartments / 10.0))))
         symm_score = self.compute_base_symmetry(image)
 
+        # Tactical entry points & defense hazards for image
+        entry_sectors = self.evaluate_entry_points(image)
+        defense_hazards = {s["sector"]: s["hazard_score"] for s in entry_sectors}
+
+        comp_factor = min(1.0, compartments / 8.0)
+        col_factor = 1.0 - exp_ratio
+        th_factor = 0.2 if th_accessible else 0.8
+        diff_score = 0.35 * comp_factor + 0.35 * col_factor + 0.20 * th_factor + 0.10 * (1.0 - access_score)
+        diff_score = float(max(0.05, min(0.98, diff_score)))
+
         return BaseLayoutFeatures(
             exposed_collector_ratio=round(exp_ratio, 3),
             th_accessible=th_accessible,
@@ -281,6 +305,9 @@ class BaseLayoutAnalyzer:
             perimeter_resource_ratio=round(perim_ratio, 3),
             resource_accessibility_score=round(access_score, 3),
             symmetry_score=round(symm_score, 3),
+            difficulty_score=round(diff_score, 3),
+            entry_points=entry_sectors,
+            defense_hazards=defense_hazards,
             metadata={
                 "detected_collectors": total_collectors,
                 "detected_exposed": exposed_collectors,
@@ -384,3 +411,97 @@ class BaseLayoutAnalyzer:
             "resource_accessibility_score": features.resource_accessibility_score,
             "exposed_collector_ratio": features.exposed_collector_ratio,
         }
+
+    def evaluate_entry_points(self, source: Any) -> List[Dict[str, Any]]:
+        """
+        Evaluates 4 primary directional entry sectors (North, East, South, West).
+        Estimates defense hazard, resource proximity, and flags the optimal entry point.
+        """
+        sectors = [
+            {"sector": "North", "coord": (int(self.ref_w * 0.5), int(self.ref_h * 0.12)), "hazard": 0.2, "defenses": 0, "resources": 0},
+            {"sector": "East", "coord": (int(self.ref_w * 0.88), int(self.ref_h * 0.5)), "hazard": 0.2, "defenses": 0, "resources": 0},
+            {"sector": "South", "coord": (int(self.ref_w * 0.5), int(self.ref_h * 0.88)), "hazard": 0.2, "defenses": 0, "resources": 0},
+            {"sector": "West", "coord": (int(self.ref_w * 0.12), int(self.ref_h * 0.5)), "hazard": 0.2, "defenses": 0, "resources": 0},
+        ]
+        if source is None:
+            return [
+                {
+                    "sector": s["sector"],
+                    "hazard_score": 0.2,
+                    "entry_coordinate": s["coord"],
+                    "defenses_count": 0,
+                    "resources_count": 0,
+                    "recommended": s["sector"] == "South",
+                }
+                for s in sectors
+            ]
+
+        # Model source
+        if hasattr(source, "buildings"):
+            cx = 0.5
+            cy = 0.5
+            for b in getattr(source, "buildings", []):
+                try:
+                    bx = float(b.x) if float(b.x) <= 1.0 else float(b.x) / self.ref_w
+                    by = float(b.y) if float(b.y) <= 1.0 else float(b.y) / self.ref_h
+                except (TypeError, ValueError, AttributeError):
+                    continue
+
+                dx = bx - cx
+                dy = by - cy
+                # Determine sector by dominant offset
+                if abs(dx) > abs(dy):
+                    target_sec = "East" if dx > 0 else "West"
+                else:
+                    target_sec = "South" if dy > 0 else "North"
+
+                sec_entry = next(s for s in sectors if s["sector"] == target_sec)
+                b_name = getattr(b, "name", "").lower()
+                is_def = getattr(b, "is_defense", False) or getattr(b, "is_air_defense", False) or any(d in b_name for d in ("cannon", "tower", "mortar", "defense", "inferno", "eagle", "xbow"))
+                is_res = getattr(b, "is_collector", False) or getattr(b, "is_storage", False) or any(r in b_name for r in ("mine", "collector", "drill", "storage"))
+                is_high_hazard = getattr(b, "is_air_defense", False) or any(h in b_name for h in ("inferno", "eagle", "scattershot"))
+
+                if is_def:
+                    sec_entry["defenses"] += 1
+                    sec_entry["hazard"] += 0.25 if is_high_hazard else 0.10
+                if is_res:
+                    sec_entry["resources"] += 1
+
+        elif isinstance(source, np.ndarray) and source.size > 0:
+            # Uniform baseline hazard for raw image frames
+            pass
+
+        # Normalize hazards and pick recommended sector
+        results = []
+        best_score = -999.0
+        best_idx = 0
+        for i, s in enumerate(sectors):
+            norm_hazard = float(max(0.05, min(0.95, round(s["hazard"], 2))))
+            suitability = (s["resources"] * 1.5) - (norm_hazard * 3.0)
+            if suitability > best_score:
+                best_score = suitability
+                best_idx = i
+
+        for i, s in enumerate(sectors):
+            results.append({
+                "sector": s["sector"],
+                "hazard_score": float(max(0.05, min(0.95, round(s["hazard"], 2)))),
+                "entry_coordinate": s["coord"],
+                "defenses_count": s["defenses"],
+                "resources_count": s["resources"],
+                "recommended": (i == best_idx),
+            })
+        return results
+
+    def compute_difficulty_score(self, source: Any, features: Optional[BaseLayoutFeatures] = None) -> float:
+        """
+        Calculates an aggregate base difficulty rating [0.0, 1.0].
+        """
+        if features is None:
+            features = self.analyze_layout(source)
+
+        comp_factor = min(1.0, features.compartment_count / 8.0)
+        col_factor = 1.0 - features.exposed_collector_ratio
+        th_factor = 0.2 if features.th_accessible else 0.8
+        diff_score = 0.35 * comp_factor + 0.35 * col_factor + 0.20 * th_factor + 0.10 * (1.0 - features.resource_accessibility_score)
+        return float(max(0.05, min(0.98, round(diff_score, 3))))
