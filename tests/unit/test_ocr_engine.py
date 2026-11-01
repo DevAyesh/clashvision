@@ -14,6 +14,7 @@ from typing import Optional, Dict
 import numpy as np
 import pytest
 
+from clashvision.core.models import OCRResult
 from clashvision.vision.ocr_engine import (
     BaseOCREngine,
     MockOCREngine,
@@ -171,6 +172,49 @@ class TestOCRDebugPackaging(unittest.TestCase):
         self.assertEqual(d["parsed_value"], 850_000)
         self.assertEqual(d["roi_name"], "gold_meter")
         self.assertEqual(d["raw_crop_shape"], [40, 160, 3])
+
+
+class TestNormalizedOCRResult(unittest.TestCase):
+    """Verifies structured OCRResult model and recognize_resource behavior."""
+
+    def test_ocr_result_trustworthy_thresholds(self):
+        valid_res = OCRResult(
+            text="750,000",
+            normalized_value=750_000,
+            confidence=0.95,
+            engine="TestEngine",
+            is_valid=True,
+            resource_type="gold",
+        )
+        self.assertTrue(valid_res.is_trustworthy(min_confidence=0.70))
+        self.assertEqual(valid_res.normalized_value, 750_000)
+
+        untrusted_res = OCRResult(
+            text="??0,000",
+            normalized_value=None,
+            confidence=0.45,
+            engine="TestEngine",
+            is_valid=False,
+            resource_type="gold",
+        )
+        self.assertFalse(untrusted_res.is_trustworthy(min_confidence=0.70))
+
+    def test_recognize_resource_on_mock_engine(self):
+        engine = MockOCREngine(default_text="1,250,000", default_confidence=0.96)
+        crop = np.zeros((40, 120, 3), dtype=np.uint8)
+        res = engine.recognize_resource(crop, resource_type="elixir", preprocessing_method="clahe_otsu")
+        self.assertEqual(res.normalized_value, 1_250_000)
+        self.assertEqual(res.confidence, 0.96)
+        self.assertEqual(res.resource_type, "elixir")
+        self.assertEqual(res.preprocessing_method, "clahe_otsu")
+        self.assertTrue(res.is_valid)
+        self.assertTrue(res.is_trustworthy())
+
+        # Test None and empty inputs
+        none_res = engine.recognize_resource(None, resource_type="dark_elixir")
+        self.assertFalse(none_res.is_valid)
+        self.assertIsNone(none_res.normalized_value)
+        self.assertEqual(none_res.confidence, 0.0)
 
 
 if __name__ == "__main__":

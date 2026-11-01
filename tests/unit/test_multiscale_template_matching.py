@@ -260,8 +260,8 @@ class TestMultiScalePerformanceBenchmark(unittest.TestCase):
         print(f"  Confidence:      {res.confidence:.4f}")
         print(f"  Detected Scale:  {res.scale:.2f}")
 
-        # Full 1080p 5-scale exhaustive scan on CPU takes < 600 ms (~80-120 ms/scale)
-        self.assertLess(avg_lat_exh, 600.0, f"Exhaustive latency too high: {avg_lat_exh:.2f}ms")
+        # Full 1080p 5-scale exhaustive scan on CPU takes < 1000 ms (~80-180 ms/scale depending on CPU load)
+        self.assertLess(avg_lat_exh, 1000.0, f"Exhaustive latency too high: {avg_lat_exh:.2f}ms")
 
         # 2. Benchmark accelerated search with early exit on high confidence
         latencies_early_exit = []

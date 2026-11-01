@@ -8,10 +8,13 @@ Derived from Requirement R2 and Feature 11.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
+import time
 from typing import Optional, Dict, Tuple, Any
 
 import cv2
 import numpy as np
+
+from clashvision.core.models import OCRResult
 
 logger = logging.getLogger("clashvision.ocr")
 
@@ -47,6 +50,48 @@ class BaseOCREngine(ABC):
         text = self.recognize_text(image)
         conf = 0.90 if text.strip() else 0.0
         return text, conf
+
+    def recognize_resource(
+        self,
+        image: Optional[np.ndarray],
+        resource_type: Optional[str] = None,
+        preprocessing_method: str = "default",
+    ) -> OCRResult:
+        """
+        Confidence-aware resource extraction returning structured OCRResult.
+        Guarantees safe execution on empty or None images.
+        """
+        t0 = time.perf_counter()
+        if image is None or image.size == 0 or image.ndim < 2:
+            return OCRResult(
+                text="",
+                normalized_value=None,
+                confidence=0.0,
+                engine=self.engine_name,
+                processing_time_ms=0.0,
+                preprocessing_method=preprocessing_method,
+                is_valid=False,
+                resource_type=resource_type,
+            )
+
+        text, conf = self.recognize_with_confidence(image)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+
+        from clashvision.vision.numeric_parser import parse_resource_number
+        norm_val = parse_resource_number(text)
+        is_valid = (norm_val is not None and norm_val >= 0)
+
+        return OCRResult(
+            text=text,
+            normalized_value=norm_val,
+            confidence=float(conf),
+            engine=self.engine_name,
+            processing_time_ms=float(dt_ms),
+            preprocessing_method=preprocessing_method,
+            is_valid=is_valid,
+            resource_type=resource_type,
+            raw_metadata={"raw_length": len(text)},
+        )
 
 
 class MockOCREngine(BaseOCREngine):

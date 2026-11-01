@@ -220,6 +220,44 @@ class FramePacket:
 
 
 @dataclass
+class OCRResult:
+    """
+    Confidence-aware, normalized result of an individual OCR extraction.
+    Ensures uncertain or corrupted OCR readings are never silently trusted.
+    """
+    text: str = ""
+    normalized_value: Optional[int] = None
+    confidence: float = 0.0
+    engine: str = "Unknown"
+    processing_time_ms: float = 0.0
+    preprocessing_method: str = "default"
+    is_valid: bool = False
+    resource_type: Optional[str] = None
+    raw_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_trustworthy(self, min_confidence: float = 0.70) -> bool:
+        """Determines if reading is valid, non-null, and meets minimum confidence."""
+        return (
+            self.is_valid
+            and self.normalized_value is not None
+            and self.confidence >= min_confidence
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "text": self.text,
+            "normalized_value": self.normalized_value,
+            "confidence": round(float(self.confidence), 4),
+            "engine": self.engine,
+            "processing_time_ms": round(float(self.processing_time_ms), 2),
+            "preprocessing_method": self.preprocessing_method,
+            "is_valid": self.is_valid,
+            "resource_type": self.resource_type,
+            "raw_metadata": self.raw_metadata,
+        }
+
+
+@dataclass
 class ResourceReading:
     """
     Extracted in-game resource values and associated OCR confidences.
