@@ -36,6 +36,7 @@ class SimulatedBattleResult:
     duration_seconds: float
     total_troops_deployed: int
     steps_executed: int
+    loot_collection_fraction: float = 0.0
     summary: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
@@ -50,6 +51,7 @@ class SimulatedBattleResult:
             "duration_seconds": round(self.duration_seconds, 2),
             "total_troops_deployed": self.total_troops_deployed,
             "steps_executed": self.steps_executed,
+            "loot_collection_fraction": round(self.loot_collection_fraction, 4),
             "summary": self.summary,
         }
 
@@ -182,5 +184,6 @@ class BattleResolver:
             duration_seconds=duration_s,
             total_troops_deployed=total_troops,
             steps_executed=executed_steps,
+            loot_collection_fraction=round(loot_harvest_ratio, 4),
             summary=summary,
         )

@@ -336,6 +336,33 @@ class TestBattleResolver(unittest.TestCase):
         self.assertGreaterEqual(res.destruction_percent, 50)
         self.assertGreaterEqual(res.stars, 1)
 
+    def test_mass_dragon_and_miner_resolution(self):
+        dragon_steps = [DeploymentStep(step_id=i, troop_type="Dragon", unit_count=2) for i in range(5)]
+        avail = ResourceReading(gold=1_000_000, elixir=1_000_000, dark_elixir=8_000)
+        layout = BaseLayoutFeatures(th_accessible=False, exposed_collector_ratio=0.3, air_defense_locations=[])
+
+        res_drag = BattleResolver.resolve(
+            strategy_type=StrategyType.MASS_DRAGON,
+            steps=dragon_steps,
+            available_resources=avail,
+            layout=layout,
+            execution_fraction=1.0,
+        )
+        self.assertGreaterEqual(res_drag.destruction_percent, 70)
+        self.assertGreaterEqual(res_drag.stars, 2)
+        self.assertGreaterEqual(res_drag.loot_collection_fraction, 0.70)
+
+        miner_steps = [DeploymentStep(step_id=i, troop_type="Miner", unit_count=8) for i in range(5)]
+        res_miner = BattleResolver.resolve(
+            strategy_type=StrategyType.MASS_MINER,
+            steps=miner_steps,
+            available_resources=avail,
+            layout=layout,
+            execution_fraction=1.0,
+        )
+        self.assertGreaterEqual(res_miner.destruction_percent, 60)
+        self.assertGreaterEqual(res_miner.stars, 2)
+
 
 class TestAutonomousEngineEndToEnd(unittest.TestCase):
     """Verifies autonomous session execution, cycle limits, and analytics tracking."""
