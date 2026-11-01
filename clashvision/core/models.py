@@ -220,6 +220,44 @@ class FramePacket:
 
 
 @dataclass
+class OCRResult:
+    """
+    Confidence-aware, normalized result of an individual OCR extraction.
+    Ensures uncertain or corrupted OCR readings are never silently trusted.
+    """
+    text: str = ""
+    normalized_value: Optional[int] = None
+    confidence: float = 0.0
+    engine: str = "Unknown"
+    processing_time_ms: float = 0.0
+    preprocessing_method: str = "default"
+    is_valid: bool = False
+    resource_type: Optional[str] = None
+    raw_metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def is_trustworthy(self, min_confidence: float = 0.70) -> bool:
+        """Determines if reading is valid, non-null, and meets minimum confidence."""
+        return (
+            self.is_valid
+            and self.normalized_value is not None
+            and self.confidence >= min_confidence
+        )
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "text": self.text,
+            "normalized_value": self.normalized_value,
+            "confidence": round(float(self.confidence), 4),
+            "engine": self.engine,
+            "processing_time_ms": round(float(self.processing_time_ms), 2),
+            "preprocessing_method": self.preprocessing_method,
+            "is_valid": self.is_valid,
+            "resource_type": self.resource_type,
+            "raw_metadata": self.raw_metadata,
+        }
+
+
+@dataclass
 class ResourceReading:
     """
     Extracted in-game resource values and associated OCR confidences.
@@ -261,6 +299,13 @@ class BaseLayoutFeatures:
     air_defense_locations: List[Tuple[int, int]] = field(default_factory=list)
     compartment_count: int = 0
     wall_perimeter_intact: bool = True
+    core_resource_ratio: float = 0.0
+    perimeter_resource_ratio: float = 0.0
+    resource_accessibility_score: float = 0.0
+    symmetry_score: float = 0.0
+    difficulty_score: float = 0.0
+    entry_points: List[Dict[str, Any]] = field(default_factory=list)
+    defense_hazards: Dict[str, float] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
@@ -271,6 +316,13 @@ class BaseLayoutFeatures:
             "air_defense_locations": self.air_defense_locations,
             "compartment_count": self.compartment_count,
             "wall_perimeter_intact": self.wall_perimeter_intact,
+            "core_resource_ratio": round(float(self.core_resource_ratio), 3),
+            "perimeter_resource_ratio": round(float(self.perimeter_resource_ratio), 3),
+            "resource_accessibility_score": round(float(self.resource_accessibility_score), 3),
+            "symmetry_score": round(float(self.symmetry_score), 3),
+            "difficulty_score": round(float(self.difficulty_score), 3),
+            "entry_points": self.entry_points,
+            "defense_hazards": self.defense_hazards,
             "metadata": self.metadata,
         }
 
@@ -288,6 +340,10 @@ class StrategyEvaluation:
     layout_suitability: float = 0.0
     prerequisites_met: bool = True
     reasons: List[str] = field(default_factory=list)
+    estimated_cost: Dict[str, int] = field(default_factory=dict)
+    pros: List[str] = field(default_factory=list)
+    cons: List[str] = field(default_factory=list)
+    recommended_entry_sector: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -299,6 +355,10 @@ class StrategyEvaluation:
             "layout_suitability": self.layout_suitability,
             "prerequisites_met": self.prerequisites_met,
             "reasons": self.reasons,
+            "estimated_cost": self.estimated_cost,
+            "pros": self.pros,
+            "cons": self.cons,
+            "recommended_entry_sector": self.recommended_entry_sector,
         }
 
 
@@ -344,6 +404,8 @@ class FarmingRecommendation:
     score_breakdown: Dict[str, float] = field(default_factory=dict)
     timestamp: float = 0.0
     explanation: str = ""
+    estimated_army_cost: Dict[str, int] = field(default_factory=dict)
+    expected_net_gain: Dict[str, int] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -354,6 +416,8 @@ class FarmingRecommendation:
             "score_breakdown": self.score_breakdown,
             "timestamp": self.timestamp,
             "explanation": self.explanation,
+            "estimated_army_cost": self.estimated_army_cost,
+            "expected_net_gain": self.expected_net_gain,
         }
 
 

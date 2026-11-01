@@ -8,10 +8,13 @@ Derived from Requirement R2 and Feature 11.
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import logging
+import time
 from typing import Optional, Dict, Tuple, Any
 
 import cv2
 import numpy as np
+
+from clashvision.core.models import OCRResult
 
 logger = logging.getLogger("clashvision.ocr")
 
@@ -47,6 +50,48 @@ class BaseOCREngine(ABC):
         text = self.recognize_text(image)
         conf = 0.90 if text.strip() else 0.0
         return text, conf
+
+    def recognize_resource(
+        self,
+        image: Optional[np.ndarray],
+        resource_type: Optional[str] = None,
+        preprocessing_method: str = "default",
+    ) -> OCRResult:
+        """
+        Confidence-aware resource extraction returning structured OCRResult.
+        Guarantees safe execution on empty or None images.
+        """
+        t0 = time.perf_counter()
+        if image is None or image.size == 0 or image.ndim < 2:
+            return OCRResult(
+                text="",
+                normalized_value=None,
+                confidence=0.0,
+                engine=self.engine_name,
+                processing_time_ms=0.0,
+                preprocessing_method=preprocessing_method,
+                is_valid=False,
+                resource_type=resource_type,
+            )
+
+        text, conf = self.recognize_with_confidence(image)
+        dt_ms = (time.perf_counter() - t0) * 1000.0
+
+        from clashvision.vision.numeric_parser import parse_resource_number
+        norm_val = parse_resource_number(text)
+        is_valid = (norm_val is not None and norm_val >= 0)
+
+        return OCRResult(
+            text=text,
+            normalized_value=norm_val,
+            confidence=float(conf),
+            engine=self.engine_name,
+            processing_time_ms=float(dt_ms),
+            preprocessing_method=preprocessing_method,
+            is_valid=is_valid,
+            resource_type=resource_type,
+            raw_metadata={"raw_length": len(text)},
+        )
 
 
 class MockOCREngine(BaseOCREngine):
@@ -241,6 +286,88 @@ class RapidOCREngine(BaseOCREngine):
             return self._fallback_engine.recognize_text(image)
 
 
+class EasyOCREngine(BaseOCREngine):
+    """
+    Optional EasyOCR engine backend utilizing PyTorch deep learning models.
+    Supports GPU acceleration (CUDA) if available; gracefully falls back
+    to CPU or provided fallback engine if uninstalled.
+    """
+
+    def __init__(
+        self,
+        languages: Optional[List[str]] = None,
+        gpu: bool = False,
+        fallback_engine: Optional[BaseOCREngine] = None,
+    ) -> None:
+        self._languages = languages or ["en"]
+        self._gpu = gpu
+        self._fallback_engine = fallback_engine or MockOCREngine()
+        self._reader: Any = None
+        self._is_available: Optional[bool] = None
+
+    @property
+    def engine_name(self) -> str:
+        return "EasyOCR"
+
+    def is_available(self) -> bool:
+        if self._is_available is not None:
+            return self._is_available
+
+        try:
+            import easyocr  # type: ignore
+            # Initialize reader instance
+            self._reader = easyocr.Reader(self._languages, gpu=self._gpu)
+            self._is_available = True
+        except Exception as e:
+            logger.debug("EasyOCR unavailable: %s", e)
+            self._is_available = False
+
+        return self._is_available
+
+    def recognize_text(self, image: np.ndarray) -> str:
+        if image is None or image.size == 0:
+            return ""
+
+        if not self.is_available():
+            return self._fallback_engine.recognize_text(image)
+
+        try:
+            results = self._reader.readtext(image, allowlist="0123456789,.:KMkm ")
+            if not results:
+                return ""
+            texts = [item[1] for item in results]
+            return " ".join(texts).strip()
+        except Exception as e:
+            logger.warning("EasyOCR execution failed: %s; falling back", e)
+            return self._fallback_engine.recognize_text(image)
+
+    def recognize_with_confidence(self, image: np.ndarray) -> Tuple[str, float]:
+        if image is None or image.size == 0:
+            return "", 0.0
+
+        if not self.is_available():
+            return self._fallback_engine.recognize_with_confidence(image)
+
+        try:
+            results = self._reader.readtext(image, allowlist="0123456789,.:KMkm ")
+            if not results:
+                return "", 0.0
+            texts = []
+            confs = []
+            for item in results:
+                text = str(item[1]).strip()
+                prob = float(item[2])
+                if text:
+                    texts.append(text)
+                    confs.append(prob)
+            full_text = " ".join(texts)
+            avg_conf = (sum(confs) / len(confs)) if confs else 0.85
+            return full_text, avg_conf
+        except Exception as e:
+            logger.warning("EasyOCR confidence execution failed: %s; falling back", e)
+            return self._fallback_engine.recognize_with_confidence(image)
+
+
 def get_ocr_engine(
     engine_type: str = "auto",
     tesseract_cmd: Optional[str] = None,
@@ -252,7 +379,8 @@ def get_ocr_engine(
     - 'mock': deterministic mock engine
     - 'tesseract': Pytesseract engine with Mock fallback
     - 'rapidocr': RapidOCR engine with Mock fallback
-    - 'auto': checks Pytesseract, then RapidOCR, then MockOCR
+    - 'easyocr': EasyOCR engine with Mock fallback
+    - 'auto': checks Pytesseract, then RapidOCR, then EasyOCR, then MockOCR
     """
     engine_type_lower = engine_type.lower()
 
@@ -267,6 +395,9 @@ def get_ocr_engine(
     if engine_type_lower == "rapidocr":
         return RapidOCREngine(fallback_engine=mock_fb)
 
+    if engine_type_lower == "easyocr":
+        return EasyOCREngine(fallback_engine=mock_fb)
+
     # 'auto' mode
     tess_engine = PytesseractEngine(tesseract_cmd=tesseract_cmd, fallback_engine=mock_fb)
     if tess_engine.is_available():
@@ -275,5 +406,9 @@ def get_ocr_engine(
     rapid_engine = RapidOCREngine(fallback_engine=mock_fb)
     if rapid_engine.is_available():
         return rapid_engine
+
+    easy_engine = EasyOCREngine(fallback_engine=mock_fb)
+    if easy_engine.is_available():
+        return easy_engine
 
     return mock_fb

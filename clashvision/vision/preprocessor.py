@@ -324,6 +324,79 @@ class VisionPreprocessor:
         return thresh
 
     @classmethod
+    def preprocess_resource_crop(
+        cls,
+        crop: np.ndarray,
+        resource_type: str = "gold",
+        strategy: str = "auto",
+        method: Optional[str] = None,
+        target_height: int = 40,
+    ) -> np.ndarray:
+        """
+        Specialized multi-strategy preprocessing tailored for in-game resource meters.
+        Supports:
+        - 'clahe_otsu': Contrast-limited adaptive equalization with Otsu binarization.
+        - 'adaptive_gaussian': Local adaptive Gaussian thresholding for dark or shaded backgrounds.
+        - 'luminance_mask': High-value brightness isolation (isolates white digits from drop-shadows).
+        - 'bilateral_adaptive': Noise reduction + adaptive threshold.
+        - 'invert_thresh': Inverted thresholding.
+        - 'auto': Resource-specific heuristic selection based on resource_type.
+        """
+        if crop is None or crop.size == 0:
+            return crop
+
+        effective_strat = (method or strategy or "auto").lower()
+
+        # Upscale if crop height is below target_height
+        h, w = crop.shape[:2]
+        if 0 < h < target_height:
+            scale_fac = target_height / float(h)
+            crop = cls.scale_for_ocr(crop, scale_factor=scale_fac)
+
+        res_type = resource_type.lower()
+        strat = effective_strat
+
+        if strat == "auto":
+            if res_type == "dark_elixir":
+                strat = "luminance_mask"
+            elif res_type in ("gold", "elixir"):
+                strat = "clahe_otsu"
+            else:
+                strat = "clahe_otsu"
+
+        if strat == "luminance_mask":
+            # Isolate bright digits (V >= 190, S <= 70 in HSV)
+            if crop.ndim == 3 and crop.shape[2] >= 3:
+                hsv = cv2.cvtColor(crop[:, :, :3], cv2.COLOR_BGR2HSV)
+                mask = cv2.inRange(hsv, np.array([0, 0, 190]), np.array([180, 70, 255]))
+                if cv2.countNonZero(mask) > 10:
+                    return cv2.bitwise_not(mask)
+            strat = "clahe_otsu"
+
+        if strat == "bilateral_adaptive":
+            gray = cls.to_grayscale(crop)
+            bilateral = cv2.bilateralFilter(gray, 5, 50, 50)
+            thresh = cls.adaptive_threshold(bilateral, method="gaussian", block_size=15, c=3, invert=True)
+            return cls.remove_noise(thresh, kernel_size=1, operation="open")
+
+        if strat == "invert_thresh":
+            gray = cls.to_grayscale(crop)
+            _, thresh = cv2.threshold(gray, 128, 255, cv2.THRESH_BINARY_INV)
+            return thresh
+
+        if strat == "adaptive_gaussian":
+            gray = cls.to_grayscale(crop)
+            enhanced = cls.enhance_contrast(gray, clip_limit=3.0)
+            thresh = cls.adaptive_threshold(enhanced, method="gaussian", block_size=15, c=3, invert=True)
+            return cls.remove_noise(thresh, kernel_size=1, operation="open")
+
+        # Default clahe_otsu
+        gray = cls.to_grayscale(crop)
+        enhanced = cls.enhance_contrast(gray, clip_limit=2.5)
+        thresh = cls.adaptive_threshold(enhanced, method="otsu", invert=True)
+        return cls.remove_noise(thresh, kernel_size=1, operation="open")
+
+    @classmethod
     def match_template_multiscale(
         cls,
         image: Optional[np.ndarray],

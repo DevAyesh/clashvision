@@ -19,6 +19,7 @@ from clashvision.vision.numeric_parser import (
     parse_resource_dict,
     sanitize_ocr_text,
     ParsedNumericResult,
+    evaluate_resource_confidence,
 )
 from tests.fixtures.recorded_samples import OCR_CORPUS, TIMER_CORPUS
 
@@ -219,6 +220,26 @@ class TestRecordedCorpusValidation(unittest.TestCase):
         for raw, expected, is_valid in TIMER_CORPUS:
             val = parse_timer_seconds(raw)
             self.assertEqual(val, expected, f"Timer corpus item failed: '{raw}'")
+
+
+class TestResourceConfidenceEvaluation(unittest.TestCase):
+    """Verifies confidence score evaluation and noise penalties."""
+
+    def test_clean_standard_number_high_confidence(self):
+        conf = evaluate_resource_confidence("850,000", 850_000)
+        self.assertGreaterEqual(conf, 0.95)
+
+    def test_noisy_text_penalty(self):
+        conf = evaluate_resource_confidence("~850,000?!", 850_000)
+        self.assertLess(conf, 0.70)
+
+    def test_impossible_amount_penalty(self):
+        conf = evaluate_resource_confidence("85,000,000", 85_000_000)
+        self.assertLess(conf, 0.70)
+
+    def test_none_input_zero_confidence(self):
+        self.assertEqual(evaluate_resource_confidence(None, None), 0.0)
+        self.assertEqual(evaluate_resource_confidence("", None), 0.0)
 
 
 if __name__ == "__main__":

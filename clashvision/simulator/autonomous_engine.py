@@ -49,7 +49,12 @@ from clashvision.vision.layout_analyzer import BaseLayoutAnalyzer
 from clashvision.vision.ocr_engine import BaseOCREngine, get_ocr_engine
 from clashvision.vision.numeric_parser import parse_resource_number
 from clashvision.vision.preprocessor import VisionPreprocessor
-from tests.fixtures.synthetic_generator import SyntheticGenerator, SyntheticFrameConfig, GameStateType
+from tests.fixtures.synthetic_generator import (
+    SyntheticGenerator,
+    SyntheticFrameConfig,
+    GameStateType,
+    generate_procedural_base,
+)
 from clashvision.storage.repository import Repository
 
 logger = logging.getLogger("clashvision.simulator.autonomous_engine")
@@ -564,40 +569,16 @@ class AutonomousEngine:
         return True
 
     def _generate_simulated_base(self, attempt_number: int) -> Tuple[np.ndarray, ResourceReading, BaseLayoutFeatures]:
-        """Procedurally creates a synthetic enemy base with random loot and layout."""
-        rng = np.random.RandomState(self.config.base_generation_seed + (self.stats.total_bases_evaluated * 13))
-
-        # Varied loot distribution (some poor bases, some massive loot bases)
-        is_jackpot = (rng.rand() < 0.25)  # 25% chance of high loot jackpot
-        if is_jackpot:
-            gold = int(rng.randint(650_000, 1_400_000))
-            elixir = int(rng.randint(650_000, 1_350_000))
-            dark_elixir = int(rng.randint(5_500, 12_000))
-        else:
-            gold = int(rng.randint(150_000, 580_000))
-            elixir = int(rng.randint(120_000, 550_000))
-            dark_elixir = int(rng.randint(800, 4_500))
-
-        sim_resources = ResourceReading(
-            gold=gold,
-            elixir=elixir,
-            dark_elixir=dark_elixir,
-            confidence={"gold": 0.95, "elixir": 0.95, "dark_elixir": 0.95},
-        )
-
-        sim_layout = BaseLayoutFeatures(
-            th_accessible=bool(rng.rand() > 0.4),
-            exposed_collector_ratio=0.75 if rng.rand() > 0.3 else 0.15,
-            compartment_count=int(rng.randint(4, 12)),
-            metadata={"defense_hazard_score": float(rng.randint(30, 80))},
-        )
+        """Procedurally creates a synthetic enemy base with archetype-aware loot and layout."""
+        effective_seed = self.config.base_generation_seed + (self.stats.total_bases_evaluated * 17) + attempt_number
+        base_model, sim_resources, sim_layout = generate_procedural_base(seed=effective_seed)
 
         frame = self.generator.generate_frame(
             state=GameStateType.ENEMY_BASE_PREVIEW,
-            gold_amount=gold,
-            elixir_amount=elixir,
-            dark_elixir_amount=dark_elixir,
-            seed=self.config.base_generation_seed + attempt_number,
+            gold_amount=sim_resources.gold or 500_000,
+            elixir_amount=sim_resources.elixir or 500_000,
+            dark_elixir_amount=sim_resources.dark_elixir or 5_000,
+            seed=effective_seed,
         )
 
         return frame, sim_resources, sim_layout

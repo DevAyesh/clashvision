@@ -29,6 +29,7 @@ from clashvision.core.models import (
     NormalizedRect,
     WindowInfo,
     FramePacket,
+    OCRResult,
     ResourceReading,
     BaseLayoutFeatures,
     StrategyEvaluation,
