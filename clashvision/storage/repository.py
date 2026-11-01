@@ -6,6 +6,7 @@ Derived from Requirement R5 and Feature 38.
 """
 
 from __future__ import annotations
+import csv
 import json
 import time
 import uuid
@@ -639,3 +640,129 @@ class Repository:
                 f.write(json_output)
 
         return json_output
+
+    def export_sessions_to_json(
+        self,
+        output_path: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Export session records as JSON string, optionally writing to disk."""
+        if session_id:
+            rows = self.db.fetchall("SELECT * FROM sessions WHERE session_id = ?;", (session_id,))
+        else:
+            rows = self.db.fetchall("SELECT * FROM sessions ORDER BY start_time DESC LIMIT 500;")
+
+        sessions_data = []
+        for r in rows:
+            sessions_data.append({
+                "session_id": r["session_id"],
+                "start_time": r["start_time"],
+                "end_time": r["end_time"],
+                "total_scans": r["total_scans"],
+                "matched_targets": r["matched_targets"],
+                "notes": r["notes"] or "",
+            })
+
+        json_out = json.dumps(sessions_data, indent=2)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(json_out)
+        return json_out
+
+    def export_scans_to_csv(
+        self,
+        output_path: str,
+        session_id: Optional[str] = None,
+    ) -> int:
+        """Export base scans to a CSV file. Returns number of rows exported."""
+        if session_id:
+            rows = self.db.fetchall(
+                "SELECT scan_id, session_id, timestamp, game_state, confidence, gold, elixir, dark_elixir, th_accessible "
+                "FROM base_scans WHERE session_id = ? ORDER BY timestamp ASC;",
+                (session_id,),
+            )
+        else:
+            rows = self.db.fetchall(
+                "SELECT scan_id, session_id, timestamp, game_state, confidence, gold, elixir, dark_elixir, th_accessible "
+                "FROM base_scans ORDER BY timestamp ASC LIMIT 5000;"
+            )
+
+        fieldnames = ["scan_id", "session_id", "timestamp", "game_state", "confidence", "gold", "elixir", "dark_elixir", "th_accessible"]
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({
+                    "scan_id": r["scan_id"],
+                    "session_id": r["session_id"],
+                    "timestamp": r["timestamp"],
+                    "game_state": r["game_state"],
+                    "confidence": r["confidence"],
+                    "gold": r["gold"],
+                    "elixir": r["elixir"],
+                    "dark_elixir": r["dark_elixir"],
+                    "th_accessible": bool(r["th_accessible"]),
+                })
+        return len(rows)
+
+    def export_battles_to_json(
+        self,
+        output_path: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> str:
+        """Export battle simulation records stored in base_scans as JSON."""
+        if session_id:
+            rows = self.db.fetchall(
+                "SELECT scan_id, session_id, timestamp, raw_ocr_json FROM base_scans WHERE session_id = ? AND raw_ocr_json IS NOT NULL;",
+                (session_id,),
+            )
+        else:
+            rows = self.db.fetchall(
+                "SELECT scan_id, session_id, timestamp, raw_ocr_json FROM base_scans WHERE raw_ocr_json IS NOT NULL ORDER BY timestamp DESC LIMIT 500;"
+            )
+
+        battles = []
+        for r in rows:
+            try:
+                raw_data = json.loads(r["raw_ocr_json"]) if r["raw_ocr_json"] else {}
+                if "battle_result" in raw_data:
+                    battles.append({
+                        "scan_id": r["scan_id"],
+                        "session_id": r["session_id"],
+                        "timestamp": r["timestamp"],
+                        "battle_result": raw_data["battle_result"],
+                    })
+            except Exception:
+                continue
+
+        json_out = json.dumps(battles, indent=2)
+        if output_path:
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(json_out)
+        return json_out
+
+    def export_analytics_to_csv(
+        self,
+        output_path: str,
+    ) -> int:
+        """Export aggregate session loot and performance statistics to CSV."""
+        rows = self.db.fetchall(
+            """
+            SELECT s.session_id, s.start_time, s.end_time, s.total_scans, s.matched_targets,
+                   COALESCE(SUM(b.gold), 0) AS total_gold,
+                   COALESCE(SUM(b.elixir), 0) AS total_elixir,
+                   COALESCE(SUM(b.dark_elixir), 0) AS total_dark_elixir
+            FROM sessions s
+            LEFT JOIN base_scans b ON s.session_id = b.session_id
+            GROUP BY s.session_id
+            ORDER BY s.start_time DESC;
+            """
+        )
+
+        fieldnames = ["session_id", "start_time", "end_time", "total_scans", "matched_targets", "total_gold", "total_elixir", "total_dark_elixir"]
+        with open(output_path, "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for r in rows:
+                writer.writerow({k: r[k] for k in fieldnames})
+        return len(rows)
