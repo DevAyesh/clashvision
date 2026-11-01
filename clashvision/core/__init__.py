@@ -58,6 +58,10 @@ from clashvision.core.config import (
     OCRConfig,
     SimulatorConfig,
 )
+from clashvision.core.resource_manager import (
+    ResourceManager,
+    get_resource_manager,
+)
 
 __all__ = [
     "GameState",
@@ -104,4 +108,6 @@ __all__ = [
     "ResourceThresholds",
     "OCRConfig",
     "SimulatorConfig",
+    "ResourceManager",
+    "get_resource_manager",
 ]
