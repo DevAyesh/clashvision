@@ -206,6 +206,7 @@ class AutonomousEngine:
         self._on_cycle_callbacks: List[Callable[[Dict[str, Any]], None]] = []
         self._on_log_callbacks: List[Callable[[str, str], None]] = []
         self._on_state_callbacks: List[Callable[[FarmingState, FarmingState, Dict[str, Any]], None]] = []
+        self._on_error_callbacks: List[Callable[[str], None]] = []
 
         # Wire state machine listener
         self.state_machine.add_listener(self._handle_state_transition)
@@ -233,6 +234,17 @@ class AutonomousEngine:
     def add_state_listener(self, callback: Callable[[FarmingState, FarmingState, Dict[str, Any]], None]) -> None:
         if callback not in self._on_state_callbacks:
             self._on_state_callbacks.append(callback)
+
+    def add_error_listener(self, callback: Callable[[str], None]) -> None:
+        if callback not in self._on_error_callbacks:
+            self._on_error_callbacks.append(callback)
+
+    def _emit_error(self, err_msg: str) -> None:
+        for cb in self._on_error_callbacks:
+            try:
+                cb(err_msg)
+            except Exception as ex:
+                logger.error("Error listener callback exception: %s", ex)
 
     def _emit_log(self, level: str, message: str) -> None:
         logger.info("[%s] %s", level, message)
@@ -389,9 +401,11 @@ class AutonomousEngine:
 
         except EmergencyStopTriggered:
             self.state_machine.trigger_error("Emergency stop triggered during cycle")
+            self._emit_error("Emergency stop triggered during cycle")
         except Exception as ex:
             logger.exception("Fatal unhandled exception in AutonomousEngine: %s", ex)
             self.state_machine.trigger_error(str(ex))
+            self._emit_error(str(ex))
         finally:
             self.stats.end_time = time.time()
             try:
