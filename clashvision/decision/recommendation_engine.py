@@ -107,6 +107,30 @@ class RecommendationEngine:
         evaluations: List[StrategyEvaluation] = []
         for strat_type, strat in self._strategies.items():
             ev = strat.evaluate(resources, layout, thresholds)
+
+            # Apply weighted topology modifiers if layout is present
+            if layout and ev.viable:
+                ev_score = ev.score
+                if strat_type == StrategyType.SNEAKY_GOBLIN:
+                    if layout.perimeter_resource_ratio > 0.6 or layout.resource_accessibility_score > 0.6:
+                        ev_score += 4.0
+                    if layout.core_resource_ratio > 0.8 and not layout.th_accessible:
+                        ev_score -= 3.0
+                elif strat_type == StrategyType.BARCH:
+                    if layout.exposed_collector_ratio > 0.7 and layout.compartment_count <= 3:
+                        ev_score += 4.0
+                    elif layout.compartment_count >= 5 or layout.difficulty_score > 0.7:
+                        ev_score -= 6.0
+                elif strat_type == StrategyType.MASS_MINER:
+                    if layout.compartment_count >= 4 or layout.core_resource_ratio > 0.5:
+                        ev_score += 5.0
+                elif strat_type == StrategyType.MASS_DRAGON:
+                    if len(layout.air_defense_locations) <= 2:
+                        ev_score += 4.0
+                    elif len(layout.air_defense_locations) >= 4:
+                        ev_score -= 3.0
+                ev.score = round(max(0.0, min(100.0, ev_score)), 1)
+
             evaluations.append(ev)
 
         # 3. Sort Rankings by Viability and Score (descending)
@@ -152,6 +176,7 @@ class RecommendationEngine:
 
         # Synergy bonus (e.g. exposed collectors with sneaky goblins/barch, or corridors with dragon/miner)
         synergy_bonus = 0.0
+        difficulty_penalty = 0.0
         if layout:
             if layout.exposed_collector_ratio >= 0.7 and primary_strategy_type in (
                 StrategyType.SNEAKY_GOBLIN,
@@ -166,12 +191,16 @@ class RecommendationEngine:
             ) and primary_strategy_type == StrategyType.MASS_DRAGON:
                 synergy_bonus = 6.0
 
+            if layout.difficulty_score > 0.75:
+                difficulty_penalty = -5.0
+
         # Formulate structured score breakdown dictionary
         score_breakdown = {
             "resource_score": round(base_result.resource_score, 1),
             "accessibility_score": round(top_eval.layout_suitability, 1),
             "risk_discount": round(risk_discount, 1),
             "synergy_bonus": round(synergy_bonus, 1),
+            "difficulty_penalty": round(difficulty_penalty, 1),
             "final_score": suitability_score,
         }
 
