@@ -137,3 +137,10 @@ DEFAULT_MIN_DARK_ELIXIR: int = 3_000
 
 # Emergency Stop safety latency limit in milliseconds (R4 Requirement)
 EMERGENCY_STOP_LATENCY_MAX_MS: int = 50
+
+# Simulated UI Navigation Reference Coordinates (Reference 1920x1080)
+SIMULATED_UI_BATTLE_BUTTON: tuple[int, int] = (94, 938)            # "Battle" button at Home Village (bottom-left)
+SIMULATED_UI_FIND_MATCH_BUTTON: tuple[int, int] = (281, 731)       # "Find a Match" button (1,500 Gold)
+SIMULATED_UI_ATTACK_CONFIRM_BUTTON: tuple[int, int] = (1584, 890)  # Green "Attack!" confirmation button
+SIMULATED_UI_NEXT_BUTTON: tuple[int, int] = (1750, 860)            # "Next" / Skip candidate button (bottom-right)
+SIMULATED_UI_RETURN_HOME_BUTTON: tuple[int, int] = (100, 870)      # "Return Home" / "End Battle" button (bottom-left)
