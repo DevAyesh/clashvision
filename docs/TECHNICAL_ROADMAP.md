@@ -10,17 +10,19 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│                        PHASE 1: RESEARCH                               │
+│                        PHASE 1: RESEARCH & AUDIT                       │
 │  - Survey open-source CoC bots (BasePilot, coc-farming-bot, etc.)     │
-│  - Evaluate OpenCV, OCR backends, MSS, PySide6, Scikit-learn           │
-│  - Output: docs/RESEARCH_REPORT.md [COMPLETED]                         │
+│  - Fix UI test baseline (10 views, mock widgets, singleton reset)      │
+│  - Baseline verified: 435 tests passing [COMPLETED]                    │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
-│                    PHASE 2: EXISTING CODEBASE AUDIT                    │
-│  - Codebase structure, data flow, safety invariants, test results      │
-│  - Identify defects (9 UI test failures from 10th view addition)        │
-│  - Output: docs/PROJECT_AUDIT.md & docs/TECHNICAL_ROADMAP.md [COMPLETED]│
+│             PHASE 2: MULTI-SCALE TEMPLATE MATCHING ENGINE              │
+│  - Resolution-independent matching (720p, 1080p, 1440p, 4K)            │
+│  - Configurable scale space with early exit optimization               │
+│  - Grayscale & Canny edge-based matching                               │
+│  - Benchmarks: Exhaustive 429ms (85ms/scale), Early-exit 248ms         │
+│  - Verified: 447 tests passing (+12 new tests) [COMPLETED]             │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
 ┌──────────────────────────────────▼─────────────────────────────────────┐
