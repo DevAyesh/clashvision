@@ -199,3 +199,49 @@ def parse_resource_dict(raw_dict: Dict[str, str]) -> Dict[str, Optional[int]]:
     Batch parses a dictionary of raw OCR strings (e.g. {'gold': '800,000', 'elixir': '1.2M'}).
     """
     return {k: parse_resource_number(v) for k, v in raw_dict.items()}
+
+
+def evaluate_resource_confidence(raw_text: Any, parsed_value: Optional[int]) -> float:
+    """
+    Evaluates confidence score [0.0, 1.0] for a resource reading.
+    Penalizes non-numeric noise, irregular grouping, and impossible amounts.
+    """
+    if raw_text is None or parsed_value is None:
+        return 0.0
+
+    text = str(raw_text).strip()
+    if not text:
+        return 0.0
+
+    score = 1.0
+
+    # 1. Check valid character ratio (digits and standard formatting symbols)
+    clean_no_space = text.replace(" ", "")
+    digits = sum(1 for c in clean_no_space if c.isdigit())
+    valid_chars = sum(1 for c in clean_no_space if c.isdigit() or c in ",.KMkm")
+    other = len(clean_no_space) - valid_chars
+
+    if other > 0:
+        score -= min(0.5, 0.15 * other)
+
+    if digits == 0:
+        return 0.0
+
+    valid_ratio = valid_chars / float(len(clean_no_space))
+    score *= valid_ratio
+
+    # 2. Value range sanity check (TH1-TH16 loot caps: typically <= 2.5M per pool)
+    if parsed_value > 2_500_000:
+        score -= 0.35
+    elif parsed_value > 2_000_000:
+        score -= 0.15
+
+    # 3. Delimiter grouping check (e.g. "800,000" vs "80,00,0")
+    if "," in text:
+        parts = text.split(",")
+        for p in parts[1:]:
+            clean_p = p.strip()
+            if len(clean_p) != 3 or not clean_p.isdigit():
+                score -= 0.20
+
+    return float(max(0.0, min(1.0, score)))
