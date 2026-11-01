@@ -101,6 +101,9 @@ class AutonomousSessionStats:
     strategy_wins: Dict[str, int] = field(default_factory=dict)
     ocr_failures: int = 0
     recovery_attempts: int = 0
+    consecutive_skips: int = 0
+    max_consecutive_skips: int = 0
+    skip_reasons: Dict[str, int] = field(default_factory=dict)
     cycle_latencies_ms: List[float] = field(default_factory=list)
 
     @property
@@ -139,6 +142,9 @@ class AutonomousSessionStats:
             "total_cycles_completed": self.total_cycles_completed,
             "total_bases_evaluated": self.total_bases_evaluated,
             "total_bases_skipped": self.total_bases_skipped,
+            "consecutive_skips": self.consecutive_skips,
+            "max_consecutive_skips": self.max_consecutive_skips,
+            "skip_reasons": self.skip_reasons,
             "total_attacks_performed": self.total_attacks_performed,
             "total_gold_acquired": self.total_gold_acquired,
             "total_elixir_acquired": self.total_elixir_acquired,
@@ -449,6 +455,7 @@ class AutonomousEngine:
                 target_found = True
                 target_frame = candidate_frame
                 target_layout = simulated_layout
+                self.stats.consecutive_skips = 0
                 self._emit_log(
                     "INFO",
                     f"Target Found! [Attempt #{search_attempts}] "
@@ -457,6 +464,11 @@ class AutonomousEngine:
                 )
             else:
                 self.stats.total_bases_skipped += 1
+                self.stats.consecutive_skips += 1
+                self.stats.max_consecutive_skips = max(self.stats.max_consecutive_skips, self.stats.consecutive_skips)
+                prim_reason = target_eval.reasons[0] if target_eval.reasons else "Unmet Thresholds"
+                self.stats.skip_reasons[prim_reason] = self.stats.skip_reasons.get(prim_reason, 0) + 1
+
                 if self.state_machine.can_transition_to(FarmingState.SKIPPING_BASE):
                     self.state_machine.transition_to(FarmingState.SKIPPING_BASE, trigger="loot_below_threshold")
                 self._emit_log(

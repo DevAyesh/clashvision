@@ -218,6 +218,23 @@ class TestTargetSelectorAndLootFiltering(unittest.TestCase):
         self.assertEqual(eval_result.action, "SKIP")
         self.assertFalse(eval_result.is_suitable)
 
+    def test_consecutive_skip_tracking_and_callbacks(self):
+        skips_recorded = []
+        self.selector.add_on_skip_listener(lambda r: skips_recorded.append(r))
+
+        poor_res = ResourceReading(gold=100_000, elixir=100_000, dark_elixir=100)
+        good_res = ResourceReading(gold=800_000, elixir=800_000, dark_elixir=6_000)
+
+        self.selector.evaluate(poor_res)
+        self.assertEqual(self.selector.consecutive_skips, 1)
+        self.selector.evaluate(poor_res)
+        self.assertEqual(self.selector.consecutive_skips, 2)
+        self.assertEqual(len(skips_recorded), 2)
+
+        self.selector.evaluate(good_res)
+        self.assertEqual(self.selector.consecutive_skips, 0)
+        self.assertEqual(self.selector.max_consecutive_skips, 2)
+
 
 class TestDeploymentExecutorAndSafety(unittest.TestCase):
     """Verifies coordinate scaling, sandboxed dispatch, and live window safety blocks."""

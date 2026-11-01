@@ -109,6 +109,18 @@ class TargetSelector:
 
     def __init__(self, config: Optional[TargetFilterConfig] = None) -> None:
         self.config = config or TargetFilterConfig()
+        self.consecutive_skips: int = 0
+        self.max_consecutive_skips: int = 0
+        self._on_skip_callbacks: List[Callable[[TargetEvaluationResult], None]] = []
+
+    def add_on_skip_listener(self, callback: Callable[[TargetEvaluationResult], None]) -> None:
+        """Registers a listener callback invoked whenever a base is skipped."""
+        if callback not in self._on_skip_callbacks:
+            self._on_skip_callbacks.append(callback)
+
+    def reset_skip_counters(self) -> None:
+        """Resets consecutive skip tracker."""
+        self.consecutive_skips = 0
 
     def update_config(self, config: TargetFilterConfig) -> None:
         self.config = config
@@ -134,20 +146,20 @@ class TargetSelector:
         required_conf = min_confidence if min_confidence is not None else self.config.min_ocr_confidence
 
         if resources is None:
-            return TargetEvaluationResult(
+            return self._record_decision(TargetEvaluationResult(
                 action="SKIP",
                 is_suitable=False,
                 farming_score=0.0,
                 weighted_value=0.0,
                 ocr_confidence=0.0,
                 reasons=["No resource readings available"],
-            )
+            ))
 
         # 1. OCR Confidence Validation
         confs = list(resources.confidence.values()) if resources.confidence else [1.0]
         avg_confidence = (sum(confs) / len(confs)) if confs else 0.8
         if avg_confidence < required_conf:
-            return TargetEvaluationResult(
+            return self._record_decision(TargetEvaluationResult(
                 action="SKIP",
                 is_suitable=False,
                 farming_score=0.0,
@@ -156,7 +168,7 @@ class TargetSelector:
                 reasons=[f"OCR confidence {avg_confidence:.2f} below threshold {required_conf:.2f}"],
                 resources=resources,
                 layout=layout,
-            )
+            ))
 
         gold = max(0, resources.gold or 0)
         elixir = max(0, resources.elixir or 0)
@@ -239,7 +251,7 @@ class TargetSelector:
         farming_score = max(0.0, min(100.0, base_score))
         action = "ATTACK" if is_suitable else "SKIP"
 
-        return TargetEvaluationResult(
+        res = TargetEvaluationResult(
             action=action,
             is_suitable=is_suitable,
             farming_score=round(farming_score, 2),
@@ -249,3 +261,18 @@ class TargetSelector:
             resources=resources,
             layout=layout,
         )
+        return self._record_decision(res)
+
+    def _record_decision(self, res: TargetEvaluationResult) -> TargetEvaluationResult:
+        """Internal tracker for skips, streaks, and listener notifications."""
+        if res.action == "SKIP":
+            self.consecutive_skips += 1
+            self.max_consecutive_skips = max(self.max_consecutive_skips, self.consecutive_skips)
+            for cb in self._on_skip_callbacks:
+                try:
+                    cb(res)
+                except Exception as ex:
+                    logger.debug("Skip callback error: %s", ex)
+        else:
+            self.consecutive_skips = 0
+        return res
