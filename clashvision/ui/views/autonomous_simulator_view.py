@@ -22,7 +22,8 @@ from clashvision.simulator.autonomous_engine import (
 from clashvision.ui.qt_compat import (
     QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
     QFrame, QPushButton, QProgressBar, QSpinBox, QComboBox,
-    QSlider, QTextEdit, QScrollArea, Qt, Signal, Slot
+    QSlider, QTextEdit, QScrollArea, Qt, Signal, Slot,
+    QShortcut, QKeySequence
 )
 from clashvision.ui.styles import (
     COLOR_NEON_GREEN, COLOR_NEON_PURPLE, COLOR_NEON_RED,
@@ -75,13 +76,21 @@ class AutonomousSimulatorView(QWidget):
         )
         header_bar.addWidget(self.badge_mode)
 
-        self.btn_emergency_stop = QPushButton("🛑 EMERGENCY STOP")
+        self.btn_emergency_stop = QPushButton("🛑 EMERGENCY STOP (Esc)")
+        self.btn_emergency_stop.setToolTip("Immediate emergency stop for autonomous farming loop (Hotkey: Escape or F12)")
         self.btn_emergency_stop.setStyleSheet(
             f"background-color: #b71540; color: #ffffff; border: 1px solid {COLOR_NEON_RED}; "
             "border-radius: 4px; padding: 6px 16px; font-weight: bold; font-size: 12px;"
         )
         self.btn_emergency_stop.clicked.connect(self._on_emergency_stop)
         header_bar.addWidget(self.btn_emergency_stop)
+
+        # Keyboard shortcuts for Emergency Stop
+        self.shortcut_esc = QShortcut(QKeySequence("Escape"), self)
+        self.shortcut_esc.activated.connect(self._on_emergency_stop)
+
+        self.shortcut_f12 = QShortcut(QKeySequence("F12"), self)
+        self.shortcut_f12.activated.connect(self._on_emergency_stop)
 
         main_layout.addLayout(header_bar)
 
@@ -384,3 +393,15 @@ class AutonomousSimulatorView(QWidget):
         color = "#ff4757" if level in ("ERROR", "CRITICAL") else ("#ffa502" if level == "WARNING" else "#ced6e0")
         line = f"<span style='color: #747d8c;'>[{t_str}]</span> <span style='color: {color};'><b>[{level}]</b> {message}</span>"
         self.txt_log.append(line)
+
+    def keyPressEvent(self, event: Any) -> None:
+        """Handle keyboard input for immediate Emergency Stop."""
+        key = getattr(event, "key", lambda: None)()
+        esc_key = getattr(Qt, "Key_Escape", 0x01000000)
+        f12_key = getattr(Qt, "Key_F12", 0x0100003B)
+        if key in (esc_key, f12_key):
+            self._on_emergency_stop()
+            if hasattr(event, "accept"):
+                event.accept()
+            return
+        super().keyPressEvent(event)
