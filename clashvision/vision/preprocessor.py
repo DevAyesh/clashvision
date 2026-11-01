@@ -43,6 +43,43 @@ class OCRDebugData:
         }
 
 
+@dataclass
+class TemplateMatchResult:
+    """
+    Structured outcome of a template matching operation.
+    """
+    found: bool
+    confidence: float
+    x: int
+    y: int
+    width: int
+    height: int
+    scale: float
+    method: str = "grayscale"
+
+    @property
+    def rect(self) -> Rect:
+        """Returns bounding rectangle in pixel space."""
+        return Rect(x=self.x, y=self.y, width=self.width, height=self.height)
+
+    @property
+    def center(self) -> Tuple[int, int]:
+        """Returns integer center coordinate (cx, cy)."""
+        return (self.x + self.width // 2, self.y + self.height // 2)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "found": self.found,
+            "confidence": round(float(self.confidence), 4),
+            "x": int(self.x),
+            "y": int(self.y),
+            "width": int(self.width),
+            "height": int(self.height),
+            "scale": round(float(self.scale), 3),
+            "method": self.method,
+        }
+
+
 class VisionPreprocessor:
     """
     High-performance image preprocessor tailored for Clash of Clans UI recognition
@@ -285,3 +322,163 @@ class VisionPreprocessor:
             thresh = cls.scale_for_ocr(thresh, scale)
 
         return thresh
+
+    @classmethod
+    def match_template_multiscale(
+        cls,
+        image: Optional[np.ndarray],
+        template: Optional[np.ndarray],
+        scales: Optional[Union[List[float], Tuple[float, ...]]] = None,
+        method: str = "grayscale",
+        match_method: int = cv2.TM_CCOEFF_NORMED,
+        threshold: float = 0.70,
+        early_exit_threshold: Optional[float] = None,
+        canny_low: int = 50,
+        canny_high: int = 150,
+    ) -> TemplateMatchResult:
+        """
+        Resolution-independent multi-scale template matching across user-defined scaling levels.
+        
+        Args:
+            image: Source scene image (BGR, BGRA, or grayscale).
+            template: Target template image to detect.
+            scales: Sequence of float scales (e.g. [0.75, 1.0, 1.25]) or None for default [0.65 .. 1.35].
+            method: 'grayscale' for luminance correlation, or 'edge' / 'canny' for structural edge matching.
+            match_method: OpenCV template matching method (default: cv2.TM_CCOEFF_NORMED).
+            threshold: Minimum correlation score [0.0, 1.0] to declare a positive match.
+            early_exit_threshold: Optional correlation score (e.g. 0.95) that terminates search immediately upon match.
+            canny_low: Lower hysteresis threshold for Canny edge detector (used when method='edge').
+            canny_high: Upper hysteresis threshold for Canny edge detector (used when method='edge').
+            
+        Returns:
+            TemplateMatchResult containing match coordinates, confidence score, and optimal scale.
+        """
+        method_norm = method.lower()
+        effective_method = "edge" if method_norm in ("edge", "canny") else "grayscale"
+
+        # 1. Validation & boundary checks
+        if image is None or template is None:
+            return TemplateMatchResult(
+                found=False, confidence=0.0, x=0, y=0, width=0, height=0, scale=1.0, method=effective_method
+            )
+
+        if image.size == 0 or template.size == 0 or image.ndim < 2 or template.ndim < 2:
+            return TemplateMatchResult(
+                found=False, confidence=0.0, x=0, y=0, width=0, height=0, scale=1.0, method=effective_method
+            )
+
+        # 2. Standardize grayscale
+        gray_img = cls.to_grayscale(image)
+        gray_tpl = cls.to_grayscale(template)
+
+        if gray_img.size == 0 or gray_tpl.size == 0:
+            return TemplateMatchResult(
+                found=False, confidence=0.0, x=0, y=0, width=0, height=0, scale=1.0, method=effective_method
+            )
+
+        img_h, img_w = gray_img.shape[:2]
+        tpl_h, tpl_w = gray_tpl.shape[:2]
+
+        # 3. Optional edge detection
+        use_edge = (effective_method == "edge")
+        if use_edge:
+            edge_img = cv2.Canny(gray_img, canny_low, canny_high)
+            if cv2.countNonZero(edge_img) == 0:
+                # Flat scene, fallback to grayscale
+                use_edge = False
+                effective_method = "grayscale"
+            else:
+                gray_img = edge_img
+
+        # 4. Prepare scale sequence
+        if scales is None:
+            scale_list = [round(float(s), 2) for s in np.arange(0.65, 1.36, 0.05)]
+        else:
+            scale_list = [float(s) for s in scales if s > 0]
+
+        if not scale_list:
+            scale_list = [1.0]
+
+        best_score = -1.0 if match_method not in (cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED) else float("inf")
+        best_loc = (0, 0)
+        best_scale = 1.0
+        best_w, best_h = 0, 0
+
+        # 5. Multi-scale search loop
+        for s in scale_list:
+            target_w = int(round(tpl_w * s))
+            target_h = int(round(tpl_h * s))
+
+            # Discard impossible template sizes
+            if target_w < 5 or target_h < 5:
+                continue
+            if target_w > img_w or target_h > img_h:
+                continue
+
+            interp = cv2.INTER_AREA if s < 1.0 else cv2.INTER_CUBIC
+            scaled_tpl = cv2.resize(gray_tpl, (target_w, target_h), interpolation=interp)
+
+            if use_edge:
+                scaled_tpl = cv2.Canny(scaled_tpl, canny_low, canny_high)
+                if cv2.countNonZero(scaled_tpl) == 0:
+                    continue
+
+            try:
+                res = cv2.matchTemplate(gray_img, scaled_tpl, match_method)
+                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+
+                if match_method in (cv2.TM_SQDIFF, cv2.TM_SQDIFF_NORMED):
+                    score = 1.0 - min_val if match_method == cv2.TM_SQDIFF_NORMED else -min_val
+                    loc = min_loc
+                else:
+                    score = float(max_val)
+                    loc = max_loc
+
+                if score > best_score:
+                    best_score = score
+                    best_loc = loc
+                    best_scale = s
+                    best_w = target_w
+                    best_h = target_h
+
+                if early_exit_threshold is not None and score >= early_exit_threshold:
+                    break
+            except cv2.error:
+                continue
+
+        # 6. Build typed result
+        raw_conf = best_score if best_w > 0 else 0.0
+        conf = float(max(0.0, min(1.0, raw_conf)))
+        found = bool(conf >= threshold and best_w > 0)
+
+        return TemplateMatchResult(
+            found=found,
+            confidence=conf,
+            x=int(best_loc[0]),
+            y=int(best_loc[1]),
+            width=int(best_w),
+            height=int(best_h),
+            scale=float(best_scale),
+            method=effective_method,
+        )
+
+    @classmethod
+    def match_template(
+        cls,
+        image: Optional[np.ndarray],
+        template: Optional[np.ndarray],
+        method: str = "grayscale",
+        match_method: int = cv2.TM_CCOEFF_NORMED,
+        threshold: float = 0.70,
+    ) -> TemplateMatchResult:
+        """
+        Fast single-scale (1.0x) template matching convenience wrapper.
+        """
+        return cls.match_template_multiscale(
+            image=image,
+            template=template,
+            scales=[1.0],
+            method=method,
+            match_method=match_method,
+            threshold=threshold,
+        )

@@ -350,6 +350,7 @@ class SimulationEngine:
     def reset(self) -> None:
         """
         Resets the simulation to the initial position (time 0, step 0, no active troops).
+        Also resets the emergency stop latch to allow new playback.
         """
         with self._lock:
             self._set_state(PlaybackState.IDLE)
@@ -357,6 +358,7 @@ class SimulationEngine:
             self._step_index = 0
             self._deployed_step_indices.clear()
             self._active_troops.clear()
+            self.barrier.reset_emergency_stop()
 
     def step_forward(self) -> Optional[DeploymentStep]:
         """

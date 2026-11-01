@@ -81,18 +81,18 @@ class TestQtCompatAbstraction:
 class TestMainWindowLayoutAndNavigation:
     """Verifies MainWindow shell layout, sidebar buttons, and view switching."""
 
-    def test_main_window_has_9_views(self, main_window: MainWindow) -> None:
-        assert main_window.stacked_widget.count() == 9
-        assert len(main_window.views) == 9
-        assert len(main_window.nav_buttons) == 9
+    def test_main_window_has_10_views(self, main_window: MainWindow) -> None:
+        assert main_window.stacked_widget.count() == 10
+        assert len(main_window.views) == 10
+        assert len(main_window.nav_buttons) == 10
 
-    def test_view_switching_across_all_9_views(self, main_window: MainWindow) -> None:
-        for idx in range(9):
+    def test_view_switching_across_all_10_views(self, main_window: MainWindow) -> None:
+        for idx in range(10):
             main_window.switch_view(idx)
             assert main_window.stacked_widget.currentIndex() == idx
 
-            # When on Simulator view (idx 4), mode banner should indicate Local Simulation
-            if idx == 4:
+            # When on Simulator views (idx 4 or 5), mode banner should indicate Local Simulation
+            if idx in (4, 5):
                 assert "LOCAL SIMULATION" in main_window.mode_indicator.text()
             else:
                 assert "LIVE OBSERVATION" in main_window.mode_indicator.text()
@@ -148,7 +148,8 @@ class TestViewModelUpdates:
         )
         lcv.update_frame(packet)
         assert "1920x1080" in lcv.stats_label.text()
-        assert "Frame #42" in lcv.feed_canvas.text()
+        assert lcv._last_packet is not None
+        assert lcv._last_packet.frame_id == 42
 
         # Toggle Pause
         lcv._on_toggle_pause()
@@ -163,7 +164,7 @@ class TestViewModelUpdates:
             frame_id=99,
         )
         lcv.update_frame(packet2)
-        assert "Frame #42" in lcv.feed_canvas.text()
+        assert lcv._last_packet.frame_id == 42
 
         # Resume
         lcv._on_toggle_pause()
