@@ -21,10 +21,12 @@ from clashvision.core.models import (
     FarmingRecommendation,
     SimulationState,
 )
+from clashvision.core.hotkey_listener import GlobalHotkeyListener
 from clashvision.storage.repository import Repository
 from clashvision.ui.qt_compat import (
     QMainWindow, QWidget, QStackedWidget, QVBoxLayout,
-    QHBoxLayout, QLabel, QFrame, QPushButton, QEvent, Qt
+    QHBoxLayout, QLabel, QFrame, QPushButton, QEvent, Qt,
+    QShortcut, QKeySequence
 )
 from clashvision.ui.styles import (
     get_stylesheet, COLOR_NEON_GREEN, COLOR_NEON_PURPLE,
@@ -194,14 +196,27 @@ class MainWindow(QMainWindow):
         top_bar_layout.addStretch()
 
         # Emergency Stop Button (Accessible from every view)
-        self.top_emergency_stop_btn = QPushButton("🛑 EMERGENCY STOP")
+        self.top_emergency_stop_btn = QPushButton("🛑 EMERGENCY STOP (Esc)")
         self.top_emergency_stop_btn.setObjectName("top_emergency_stop_btn")
+        self.top_emergency_stop_btn.setToolTip("Immediate Emergency Stop for simulation and auto-bot (Hotkey: Escape or F12)")
         self.top_emergency_stop_btn.setStyleSheet(
             f"background-color: {COLOR_NEON_RED}; color: #ffffff; border: 1px solid #ff6b81; "
             "border-radius: 5px; font-weight: bold; font-size: 11px; padding: 5px 14px;"
         )
         self.top_emergency_stop_btn.clicked.connect(self.trigger_emergency_stop)
         top_bar_layout.addWidget(self.top_emergency_stop_btn)
+
+        # Keyboard shortcuts for application-wide emergency stop
+        self.shortcut_esc = QShortcut(QKeySequence("Escape"), self)
+        self.shortcut_esc.activated.connect(self.trigger_emergency_stop)
+
+        self.shortcut_f12 = QShortcut(QKeySequence("F12"), self)
+        self.shortcut_f12.activated.connect(self.trigger_emergency_stop)
+
+        # Global hotkey listener for background / OS-wide keyboard input
+        self.global_hotkey_listener = GlobalHotkeyListener()
+        self.global_hotkey_listener.register_callback(lambda k: self.trigger_emergency_stop())
+        self.global_hotkey_listener.start()
 
         content_layout.addWidget(self.top_status_bar)
 
@@ -294,6 +309,7 @@ class MainWindow(QMainWindow):
         self.view_simulator.sig_reset.connect(self.simulation_worker.reset_playback)
         self.view_simulator.sig_speed_changed.connect(self.simulation_worker.set_speed)
         self.view_simulator.sig_emergency_stop.connect(self.trigger_emergency_stop)
+        self.view_auto_simulator.sig_emergency_stop.connect(self.trigger_emergency_stop)
 
     def start_all_workers(self) -> None:
         """Start asynchronous worker threads."""
@@ -303,6 +319,8 @@ class MainWindow(QMainWindow):
 
     def stop_all_workers(self) -> None:
         """Gracefully halt all worker threads."""
+        if hasattr(self, "global_hotkey_listener") and self.global_hotkey_listener:
+            self.global_hotkey_listener.stop()
         self.capture_worker.stop()
         self.vision_worker.stop()
         self.decision_worker.stop()
@@ -408,8 +426,22 @@ class MainWindow(QMainWindow):
             logger.warning("Failed to persist worker error log to repository: %s", ex)
         self.view_overview.show_alert(f"{source} Error", error_msg)
 
+    def keyPressEvent(self, event: Any) -> None:
+        """Handle keyboard input for immediate Emergency Stop across the window."""
+        key = getattr(event, "key", lambda: None)()
+        esc_key = getattr(Qt, "Key_Escape", 0x01000000)
+        f12_key = getattr(Qt, "Key_F12", 0x0100003B)
+        if key in (esc_key, f12_key):
+            self.trigger_emergency_stop()
+            if hasattr(event, "accept"):
+                event.accept()
+            return
+        super().keyPressEvent(event)
+
     def closeEvent(self, event: Any) -> None:
         """Handle window close event and terminate workers gracefully."""
+        if hasattr(self, "global_hotkey_listener") and self.global_hotkey_listener:
+            self.global_hotkey_listener.stop()
         self.stop_all_workers()
         if hasattr(self, "view_auto_simulator") and hasattr(self.view_auto_simulator, "engine"):
             self.view_auto_simulator.engine.stop()

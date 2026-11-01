@@ -24,7 +24,7 @@ if not _FORCE_MOCK:
         import PySide6
         from PySide6 import QtCore, QtGui, QtWidgets
         from PySide6.QtCore import Signal, Slot, Property, Qt, QObject, QThread, QTimer, QSize, QRect, QPoint, QEvent
-        from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QImage, QIcon
+        from PySide6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QImage, QIcon, QKeySequence, QShortcut
         from PySide6.QtWidgets import (
             QApplication, QMainWindow, QWidget, QStackedWidget,
             QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
@@ -46,7 +46,7 @@ if not _FORCE_MOCK:
                 pyqtProperty as Property,
                 Qt, QObject, QThread, QTimer, QSize, QRect, QPoint, QEvent
             )
-            from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QImage, QIcon
+            from PyQt6.QtGui import QColor, QPainter, QPen, QBrush, QFont, QPixmap, QImage, QIcon, QKeySequence, QShortcut
             from PyQt6.QtWidgets import (
                 QApplication, QMainWindow, QWidget, QStackedWidget,
                 QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout,
@@ -650,6 +650,27 @@ if IS_HEADLESS_FALLBACK:
 
     QDialog = MockWidget
     QMessageBox = MockWidget
+
+    class MockKeySequence:
+        def __init__(self, key: Any = None) -> None:
+            self._key = key
+
+    class MockShortcut(MockQObject):
+        activated = MockSignal()
+
+        def __init__(self, key: Any = None, parent: Any = None) -> None:
+            super().__init__(parent)
+            self._key = key
+            self._context = None
+
+        def setContext(self, context: Any) -> None:
+            self._context = context
+
+        def trigger(self) -> None:
+            self.activated.emit()
+
+    QKeySequence = MockKeySequence
+    QShortcut = MockShortcut
 
     # Drawing and pixmaps
     class MockColor:
