@@ -776,3 +776,180 @@ def generate_timer_crop(
     """Generate a synthetic battle timer crop."""
     return generate_resource_crop(text=time_str, width=120, height=45, as_pil=as_pil)
 
+
+@dataclass
+class SyntheticBuilding:
+    """Represents a simulated building on the tactical map."""
+    name: str
+    x: float
+    y: float
+    is_collector: bool = False
+    is_storage: bool = False
+    is_defense: bool = False
+    is_air_defense: bool = False
+    is_town_hall: bool = False
+    is_exposed: bool = False
+    hit_points: int = 1000
+
+
+@dataclass
+class SyntheticBaseLayout:
+    """Structured synthetic enemy base layout."""
+    layout_type: str
+    th_level: int
+    th_accessible: bool
+    dead_base: bool
+    storages_in_core: bool
+    buildings: List[SyntheticBuilding] = field(default_factory=list)
+    wall_coordinates: List[Tuple[int, int]] = field(default_factory=list)
+    air_defense_locations: List[Tuple[int, int]] = field(default_factory=list)
+    total_gold: int = 500_000
+    total_elixir: int = 500_000
+    total_dark_elixir: int = 4_000
+
+
+def generate_procedural_base(
+    seed: int = 42,
+    archetype: Optional[str] = None,
+    th_level: Optional[int] = None,
+) -> Tuple[SyntheticBaseLayout, Any, Any]:
+    """
+    Procedurally creates a deterministic, seed-controlled synthetic enemy base
+    supporting: DEAD_BASE, CORE_STORAGES, RING_BASE, COMPARTMENT_BASE, RUSHED_BASE.
+    Returns (SyntheticBaseLayout, ResourceReading, BaseLayoutFeatures).
+    """
+    from clashvision.core.models import BaseLayoutFeatures, ResourceReading
+    from clashvision.vision.layout_analyzer import BaseLayoutAnalyzer
+
+    rng = np.random.RandomState(seed)
+
+    archetypes = ["DEAD_BASE", "CORE_STORAGES", "RING_BASE", "COMPARTMENT_BASE", "RUSHED_BASE"]
+    arch = archetype.upper() if archetype and archetype.upper() in archetypes else rng.choice(archetypes)
+    th = th_level if th_level and 9 <= th_level <= 16 else int(rng.randint(11, 16))
+
+    buildings: List[SyntheticBuilding] = []
+    walls: List[Tuple[int, int]] = []
+    ads: List[Tuple[int, int]] = []
+
+    # Town hall placement
+    if arch in ("DEAD_BASE", "RUSHED_BASE"):
+        th_accessible = True
+        th_pos = (0.82, 0.5)
+    else:
+        th_accessible = False
+        th_pos = (0.5, 0.5)
+
+    buildings.append(
+        SyntheticBuilding(
+            name=f"Town Hall {th}",
+            x=th_pos[0],
+            y=th_pos[1],
+            is_town_hall=True,
+            hit_points=th * 1000,
+            is_exposed=th_accessible,
+        )
+    )
+
+    # Resource distribution by archetype
+    if arch == "DEAD_BASE":
+        gold = int(rng.randint(750_000, 1_600_000))
+        elixir = int(rng.randint(750_000, 1_600_000))
+        dark_elixir = int(rng.randint(6_000, 14_000))
+        dead_base = True
+        storages_core = False
+        # Collectors placed along exterior perimeter
+        for i in range(7):
+            angle = (2 * math.pi / 7) * i
+            bx = 0.5 + 0.38 * math.cos(angle)
+            by = 0.5 + 0.38 * math.sin(angle)
+            buildings.append(SyntheticBuilding(name="Gold Mine", x=bx, y=by, is_collector=True, is_exposed=True))
+            buildings.append(SyntheticBuilding(name="Elixir Collector", x=bx + 0.02, y=by + 0.02, is_collector=True, is_exposed=True))
+
+    elif arch == "CORE_STORAGES":
+        gold = int(rng.randint(500_000, 1_100_000))
+        elixir = int(rng.randint(500_000, 1_100_000))
+        dark_elixir = int(rng.randint(4_000, 9_000))
+        dead_base = False
+        storages_core = True
+        # Storages nested deeply in center
+        for i in range(4):
+            offset_x = 0.06 if i % 2 == 0 else -0.06
+            offset_y = 0.06 if i < 2 else -0.06
+            buildings.append(SyntheticBuilding(name="Gold Storage", x=0.5 + offset_x, y=0.5 + offset_y, is_storage=True, is_exposed=False))
+            buildings.append(SyntheticBuilding(name="Elixir Storage", x=0.5 + offset_x * 0.7, y=0.5 + offset_y * 0.7, is_storage=True, is_exposed=False))
+
+    elif arch == "RING_BASE":
+        gold = int(rng.randint(600_000, 1_200_000))
+        elixir = int(rng.randint(600_000, 1_200_000))
+        dark_elixir = int(rng.randint(5_000, 10_000))
+        dead_base = False
+        storages_core = True
+        # Ring of walls around core
+        for i in range(60):
+            ang = (2 * math.pi / 60) * i
+            wx = int((0.5 + 0.22 * math.cos(ang)) * 1920)
+            wy = int((0.5 + 0.22 * math.sin(ang)) * 1080)
+            walls.append((wx, wy))
+
+    elif arch == "COMPARTMENT_BASE":
+        gold = int(rng.randint(550_000, 1_150_000))
+        elixir = int(rng.randint(550_000, 1_150_000))
+        dark_elixir = int(rng.randint(4_500, 9_500))
+        dead_base = False
+        storages_core = True
+        # Dense compartments
+        for i in range(80):
+            walls.append((int(rng.uniform(0.3, 0.7) * 1920), int(rng.uniform(0.3, 0.7) * 1080)))
+
+    else:  # RUSHED_BASE
+        gold = int(rng.randint(250_000, 650_000))
+        elixir = int(rng.randint(250_000, 650_000))
+        dark_elixir = int(rng.randint(1_500, 4_500))
+        dead_base = False
+        storages_core = False
+        for i in range(20):
+            walls.append((int(rng.uniform(0.4, 0.6) * 1920), int(rng.uniform(0.4, 0.6) * 1080)))
+
+    # Add defenses (Air defenses, Cannons, Inferno/Eagle)
+    ad_count = 4 if th >= 10 else 3
+    for i in range(ad_count):
+        ad_angle = (2 * math.pi / ad_count) * i + 0.3
+        ad_x = 0.5 + 0.20 * math.cos(ad_angle)
+        ad_y = 0.5 + 0.20 * math.sin(ad_angle)
+        buildings.append(SyntheticBuilding(name="Air Defense", x=ad_x, y=ad_y, is_defense=True, is_air_defense=True))
+        ads.append((int(ad_x * 1920), int(ad_y * 1080)))
+
+    # Additional ground defenses
+    for i in range(8):
+        d_angle = (2 * math.pi / 8) * i
+        dx = 0.5 + 0.28 * math.cos(d_angle)
+        dy = 0.5 + 0.28 * math.sin(d_angle)
+        buildings.append(SyntheticBuilding(name="Cannon", x=dx, y=dy, is_defense=True))
+
+    layout_model = SyntheticBaseLayout(
+        layout_type=arch,
+        th_level=th,
+        th_accessible=th_accessible,
+        dead_base=dead_base,
+        storages_in_core=storages_core,
+        buildings=buildings,
+        wall_coordinates=walls,
+        air_defense_locations=ads,
+        total_gold=gold,
+        total_elixir=elixir,
+        total_dark_elixir=dark_elixir,
+    )
+
+    resources = ResourceReading(
+        gold=gold,
+        elixir=elixir,
+        dark_elixir=dark_elixir,
+        confidence={"gold": 0.95, "elixir": 0.95, "dark_elixir": 0.95},
+    )
+
+    analyzer = BaseLayoutAnalyzer(reference_width=1920, reference_height=1080)
+    features = analyzer.analyze_layout(layout_model)
+
+    return layout_model, resources, features
+
+
