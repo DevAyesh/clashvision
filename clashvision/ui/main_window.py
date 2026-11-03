@@ -206,16 +206,20 @@ class MainWindow(QMainWindow):
         self.top_emergency_stop_btn.clicked.connect(self.trigger_emergency_stop)
         top_bar_layout.addWidget(self.top_emergency_stop_btn)
 
-        # Keyboard shortcuts for application-wide emergency stop
+        # Keyboard shortcuts for application-wide simulation controls
         self.shortcut_esc = QShortcut(QKeySequence("Escape"), self)
         self.shortcut_esc.activated.connect(self.trigger_emergency_stop)
 
         self.shortcut_f12 = QShortcut(QKeySequence("F12"), self)
         self.shortcut_f12.activated.connect(self.trigger_emergency_stop)
 
+        self.shortcut_f5 = QShortcut(QKeySequence("F5"), self)
+        self.shortcut_f5.activated.connect(self._on_start_hotkey_triggered)
+
         # Global hotkey listener for background / OS-wide keyboard input
         self.global_hotkey_listener = GlobalHotkeyListener()
-        self.global_hotkey_listener.register_callback(lambda k: self.trigger_emergency_stop())
+        self.global_hotkey_listener.register_emergency_callback(lambda k: self.trigger_emergency_stop())
+        self.global_hotkey_listener.register_start_callback(lambda k: self._on_start_hotkey_triggered())
         self.global_hotkey_listener.start()
 
         content_layout.addWidget(self.top_status_bar)
@@ -426,13 +430,26 @@ class MainWindow(QMainWindow):
             logger.warning("Failed to persist worker error log to repository: %s", ex)
         self.view_overview.show_alert(f"{source} Error", error_msg)
 
+    def _on_start_hotkey_triggered(self) -> None:
+        """Triggered via F5 hotkey to start autonomous farming simulation."""
+        if hasattr(self, "view_auto_simulator") and hasattr(self.view_auto_simulator, "_on_start"):
+            logger.info("F5 Start hotkey triggered: starting autonomous simulation.")
+            self.view_auto_simulator._on_start()
+
     def keyPressEvent(self, event: Any) -> None:
-        """Handle keyboard input for immediate Emergency Stop across the window."""
+        """Handle keyboard input for Start, Pause, and Emergency Stop across the window."""
         key = getattr(event, "key", lambda: None)()
         esc_key = getattr(Qt, "Key_Escape", 0x01000000)
         f12_key = getattr(Qt, "Key_F12", 0x0100003B)
+        f5_key = getattr(Qt, "Key_F5", 0x01000034)
+
         if key in (esc_key, f12_key):
             self.trigger_emergency_stop()
+            if hasattr(event, "accept"):
+                event.accept()
+            return
+        elif key == f5_key:
+            self._on_start_hotkey_triggered()
             if hasattr(event, "accept"):
                 event.accept()
             return

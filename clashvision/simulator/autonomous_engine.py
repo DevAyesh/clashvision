@@ -22,6 +22,13 @@ from clashvision.core.constants import (
     SIMULATED_UI_ATTACK_CONFIRM_BUTTON,
     SIMULATED_UI_NEXT_BUTTON,
     SIMULATED_UI_RETURN_HOME_BUTTON,
+    SIMULATED_UI_BATTLE_BUTTON_NORM,
+    SIMULATED_UI_FIND_MATCH_BUTTON_NORM,
+    SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM,
+    SIMULATED_UI_NEXT_BUTTON_NORM,
+    SIMULATED_UI_RETURN_HOME_BUTTON_NORM,
+    VIRTUAL_REFERENCE_WIDTH,
+    VIRTUAL_REFERENCE_HEIGHT,
 )
 from clashvision.core.models import (
     BaseLayoutFeatures,
@@ -427,17 +434,36 @@ class AutonomousEngine:
         self.executor.reset()
         time.sleep(0.05)
 
-    def _simulate_ui_click(self, button_name: str, coords: Tuple[int, int], details: str = "") -> None:
-        """Simulates a UI navigation button click within the quarantined simulator canvas."""
-        x, y = coords
+    def _simulate_ui_click(
+        self,
+        button_name: str,
+        coords: Tuple[int, int],
+        normalized_coords: Optional[Tuple[float, float]] = None,
+        details: str = "",
+    ) -> None:
+        """Simulates a resolution-aware UI navigation button click within the quarantined simulator canvas."""
+        cw = getattr(self.executor, "canvas_width", VIRTUAL_REFERENCE_WIDTH)
+        ch = getattr(self.executor, "canvas_height", VIRTUAL_REFERENCE_HEIGHT)
+
+        if normalized_coords is not None:
+            nx, ny = normalized_coords
+            x = int(round(nx * cw))
+            y = int(round(ny * ch))
+        else:
+            ref_x, ref_y = coords
+            nx = ref_x / VIRTUAL_REFERENCE_WIDTH
+            ny = ref_y / VIRTUAL_REFERENCE_HEIGHT
+            x = int(round(nx * cw))
+            y = int(round(ny * ch))
+
         try:
             self.executor.controller.click(x=x, y=y)
-            msg = f"👉 [Simulated Click] '{button_name}' at ({x}, {y})"
+            msg = f"👉 [Simulated Click] '{button_name}' at ({x}, {y}) [norm: ({nx:.3f}, {ny:.3f})]"
             if details:
                 msg += f" — {details}"
             self._emit_log("INFO", msg)
         except Exception as e:
-            logger.debug("Simulated navigation click '%s' error: %s", button_name, e)
+            logger.warning("Simulated navigation click '%s' error: %s", button_name, e)
 
     def _execute_cycle(self, cycle_number: int) -> bool:
         """
@@ -455,9 +481,9 @@ class AutonomousEngine:
         # ----------------------------------------------------------------------
         # Simulated UI Navigation: Home Village -> Multiplayer -> Army Confirm
         # ----------------------------------------------------------------------
-        self._simulate_ui_click("Battle", SIMULATED_UI_BATTLE_BUTTON, "Opening attack menu from Home Village")
-        self._simulate_ui_click("Find a Match", SIMULATED_UI_FIND_MATCH_BUTTON, "Selecting Multiplayer Matchmaking (1,500 Gold)")
-        self._simulate_ui_click("Attack!", SIMULATED_UI_ATTACK_CONFIRM_BUTTON, "Confirming army readiness and launching search")
+        self._simulate_ui_click("Battle", SIMULATED_UI_BATTLE_BUTTON, SIMULATED_UI_BATTLE_BUTTON_NORM, "Opening attack menu from Home Village")
+        self._simulate_ui_click("Find a Match", SIMULATED_UI_FIND_MATCH_BUTTON, SIMULATED_UI_FIND_MATCH_BUTTON_NORM, "Selecting Multiplayer Matchmaking (1,500 Gold)")
+        self._simulate_ui_click("Attack!", SIMULATED_UI_ATTACK_CONFIRM_BUTTON, SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM, "Confirming army readiness and launching search")
 
         # ----------------------------------------------------------------------
         # Search Loop: Search until suitable base or search limit reached
@@ -511,7 +537,7 @@ class AutonomousEngine:
 
                 if self.state_machine.can_transition_to(FarmingState.SKIPPING_BASE):
                     self.state_machine.transition_to(FarmingState.SKIPPING_BASE, trigger="loot_below_threshold")
-                self._simulate_ui_click("Next", SIMULATED_UI_NEXT_BUTTON, f"Skipping Base #{search_attempts} — Unmet Thresholds")
+                self._simulate_ui_click("Next", SIMULATED_UI_NEXT_BUTTON, SIMULATED_UI_NEXT_BUTTON_NORM, f"Skipping Base #{search_attempts} — Unmet Thresholds")
                 self._emit_log(
                     "DEBUG",
                     f"Skipping Base #{search_attempts} — Reasons: {', '.join(target_eval.reasons)}"
@@ -601,7 +627,7 @@ class AutonomousEngine:
             self.stats.strategy_wins[s_name] = self.stats.strategy_wins.get(s_name, 0) + 1
 
         self._emit_log("INFO", f"Battle Complete! {battle_result.summary}")
-        self._simulate_ui_click("Return Home", SIMULATED_UI_RETURN_HOME_BUTTON, "Returning to Home Village after battle")
+        self._simulate_ui_click("Return Home", SIMULATED_UI_RETURN_HOME_BUTTON, SIMULATED_UI_RETURN_HOME_BUTTON_NORM, "Returning to Home Village after battle")
 
         # Persist to database
         try:

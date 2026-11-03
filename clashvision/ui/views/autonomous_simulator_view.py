@@ -76,7 +76,7 @@ class AutonomousSimulatorView(QWidget):
         )
         header_bar.addWidget(self.badge_mode)
 
-        self.btn_emergency_stop = QPushButton("🛑 EMERGENCY STOP (Esc)")
+        self.btn_emergency_stop = QPushButton("🛑 EMERGENCY STOP (Esc / F12)")
         self.btn_emergency_stop.setToolTip("Immediate emergency stop for autonomous farming loop (Hotkey: Escape or F12)")
         self.btn_emergency_stop.setStyleSheet(
             f"background-color: #b71540; color: #ffffff; border: 1px solid {COLOR_NEON_RED}; "
@@ -85,7 +85,16 @@ class AutonomousSimulatorView(QWidget):
         self.btn_emergency_stop.clicked.connect(self._on_emergency_stop)
         header_bar.addWidget(self.btn_emergency_stop)
 
-        # Keyboard shortcuts for Emergency Stop
+        # Keyboard shortcuts for Autonomous Simulator
+        self.shortcut_start = QShortcut(QKeySequence("F5"), self)
+        self.shortcut_start.activated.connect(self._on_start)
+
+        self.shortcut_stop = QShortcut(QKeySequence("Shift+F5"), self)
+        self.shortcut_stop.activated.connect(self._on_stop)
+
+        self.shortcut_pause = QShortcut(QKeySequence("Space"), self)
+        self.shortcut_pause.activated.connect(self._toggle_pause_resume)
+
         self.shortcut_esc = QShortcut(QKeySequence("Escape"), self)
         self.shortcut_esc.activated.connect(self._on_emergency_stop)
 
@@ -101,27 +110,42 @@ class AutonomousSimulatorView(QWidget):
         controls_card.setStyleSheet(f"background-color: {COLOR_BG_CARD}; border: 1px solid {COLOR_BORDER}; border-radius: 8px; padding: 10px;")
         controls_layout = QHBoxLayout(controls_card)
 
-        self.btn_start = QPushButton("▶ Start Simulation")
+        self.btn_start = QPushButton("▶ Start Simulation (F5)")
+        self.btn_start.setToolTip("Start autonomous farming engine (Hotkey: F5)")
         self.btn_start.setStyleSheet(f"background-color: #142a1b; color: {COLOR_NEON_GREEN}; border: 1px solid {COLOR_NEON_GREEN}; font-weight: bold; padding: 6px 14px;")
         self.btn_start.clicked.connect(self._on_start)
         controls_layout.addWidget(self.btn_start)
 
-        self.btn_pause = QPushButton("⏸ Pause")
+        self.btn_pause = QPushButton("⏸ Pause (Space)")
+        self.btn_pause.setToolTip("Pause farming cycle (Hotkey: Space)")
         self.btn_pause.setStyleSheet("padding: 6px 14px;")
         self.btn_pause.clicked.connect(self._on_pause)
         controls_layout.addWidget(self.btn_pause)
 
-        self.btn_resume = QPushButton("▶ Resume")
+        self.btn_resume = QPushButton("▶ Resume (Space)")
+        self.btn_resume.setToolTip("Resume farming cycle (Hotkey: Space)")
         self.btn_resume.setStyleSheet("padding: 6px 14px;")
         self.btn_resume.clicked.connect(self._on_resume)
         controls_layout.addWidget(self.btn_resume)
 
-        self.btn_stop = QPushButton("⏹ Stop")
+        self.btn_stop = QPushButton("⏹ Stop (Shift+F5)")
+        self.btn_stop.setToolTip("Stop farming simulation cleanly (Hotkey: Shift+F5)")
         self.btn_stop.setStyleSheet("padding: 6px 14px;")
         self.btn_stop.clicked.connect(self._on_stop)
         controls_layout.addWidget(self.btn_stop)
 
-        controls_layout.addSpacing(20)
+        controls_layout.addSpacing(15)
+
+        # Keyboard shortcuts visual badge
+        self.lbl_shortcuts_info = QLabel("⌨ Hotkeys: Start [F5]  •  Pause/Resume [Space]  •  Stop [Shift+F5]  •  Emergency Stop [Esc / F12]")
+        self.lbl_shortcuts_info.setToolTip("Keyboard shortcuts available to control simulation execution")
+        self.lbl_shortcuts_info.setStyleSheet(
+            "background-color: #1e222d; color: #00d2d3; border: 1px solid #2e3548; "
+            "border-radius: 4px; padding: 5px 12px; font-size: 11px; font-weight: bold;"
+        )
+        controls_layout.addWidget(self.lbl_shortcuts_info)
+
+        controls_layout.addSpacing(15)
 
         # Speed Multiplier
         controls_layout.addWidget(QLabel("Speed:"))
@@ -394,14 +418,47 @@ class AutonomousSimulatorView(QWidget):
         line = f"<span style='color: #747d8c;'>[{t_str}]</span> <span style='color: {color};'><b>[{level}]</b> {message}</span>"
         self.txt_log.append(line)
 
+    def _toggle_pause_resume(self) -> None:
+        """Toggles between Pause and Resume, or Starts if currently stopped."""
+        if self.engine.current_state == FarmingState.PAUSED:
+            self._on_resume()
+        elif self.engine.current_state in (FarmingState.STOPPED, FarmingState.READY):
+            self._on_start()
+        elif self.engine.current_state.is_active:
+            self._on_pause()
+
     def keyPressEvent(self, event: Any) -> None:
-        """Handle keyboard input for immediate Emergency Stop."""
+        """Handle keyboard input for Start, Pause/Resume, Stop, and Emergency Stop."""
         key = getattr(event, "key", lambda: None)()
         esc_key = getattr(Qt, "Key_Escape", 0x01000000)
         f12_key = getattr(Qt, "Key_F12", 0x0100003B)
+        f5_key = getattr(Qt, "Key_F5", 0x01000034)
+        space_key = getattr(Qt, "Key_Space", 0x20)
+
+        # 1. Emergency Stop (Esc, F12)
         if key in (esc_key, f12_key):
             self._on_emergency_stop()
             if hasattr(event, "accept"):
                 event.accept()
             return
+
+        # 2. Start / Stop (F5 / Shift+F5)
+        if key == f5_key:
+            modifiers = getattr(event, "modifiers", lambda: 0)()
+            shift_mod = getattr(Qt, "ShiftModifier", 0x02000000)
+            if modifiers & shift_mod:
+                self._on_stop()
+            else:
+                self._on_start()
+            if hasattr(event, "accept"):
+                event.accept()
+            return
+
+        # 3. Pause / Resume (Space) - ignore if user is typing in a text field
+        if key == space_key:
+            self._toggle_pause_resume()
+            if hasattr(event, "accept"):
+                event.accept()
+            return
+
         super().keyPressEvent(event)
