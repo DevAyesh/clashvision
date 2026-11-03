@@ -86,6 +86,13 @@ class AutonomousEngineConfig:
     playback_speed: float = 2.0           # 0.1x to 10.0x
     base_generation_seed: int = 1001
 
+    # Realistic in-game UI navigation transition delays (scaled by playback_speed)
+    ui_modal_delay_seconds: float = 0.5        # Wait for multiplayer modal to pop up after clicking Battle
+    ui_army_popup_delay_seconds: float = 0.4   # Wait for army modal to pop up after clicking Find Match
+    ui_cloud_search_delay_seconds: float = 0.6 # Wait for cloud search to load enemy base after clicking Attack
+    ui_next_base_delay_seconds: float = 0.35   # Wait for next candidate base after clicking Next
+    ui_return_home_delay_seconds: float = 0.5  # Wait after clicking Return Home
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "max_cycles": self.max_cycles,
@@ -94,6 +101,11 @@ class AutonomousEngineConfig:
             "target_filter": self.target_filter.to_dict(),
             "playback_speed": self.playback_speed,
             "available_army": self.available_army,
+            "ui_modal_delay_seconds": self.ui_modal_delay_seconds,
+            "ui_army_popup_delay_seconds": self.ui_army_popup_delay_seconds,
+            "ui_cloud_search_delay_seconds": self.ui_cloud_search_delay_seconds,
+            "ui_next_base_delay_seconds": self.ui_next_base_delay_seconds,
+            "ui_return_home_delay_seconds": self.ui_return_home_delay_seconds,
         }
 
 
@@ -434,6 +446,34 @@ class AutonomousEngine:
         self.executor.reset()
         time.sleep(0.05)
 
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        """
+        Sleeps for the requested duration in responsive 20ms intervals,
+        respecting emergency stop, stop requests, and pause requests.
+        Duration is scaled dynamically by self.config.playback_speed.
+        Returns False if a stop was requested during the delay.
+        """
+        if seconds <= 0:
+            return not self._stop_requested.is_set()
+
+        speed = max(0.1, getattr(self.config, "playback_speed", 1.0))
+        effective_delay = seconds / speed
+        elapsed = 0.0
+        step = 0.02
+
+        while elapsed < effective_delay:
+            if self._stop_requested.is_set():
+                return False
+
+            while self._pause_requested.is_set() and not self._stop_requested.is_set():
+                time.sleep(0.05)
+
+            sleep_chunk = min(step, effective_delay - elapsed)
+            time.sleep(sleep_chunk)
+            elapsed += sleep_chunk
+
+        return not self._stop_requested.is_set()
+
     def _simulate_ui_click(
         self,
         button_name: str,
@@ -479,11 +519,40 @@ class AutonomousEngine:
         target_layout: Optional[BaseLayoutFeatures] = None
 
         # ----------------------------------------------------------------------
-        # Simulated UI Navigation: Home Village -> Multiplayer -> Army Confirm
+        # Simulated UI Navigation: Home Village -> Multiplayer -> Army Confirm -> Matchmaking
         # ----------------------------------------------------------------------
-        self._simulate_ui_click("Battle", SIMULATED_UI_BATTLE_BUTTON, SIMULATED_UI_BATTLE_BUTTON_NORM, "Opening attack menu from Home Village")
-        self._simulate_ui_click("Find a Match", SIMULATED_UI_FIND_MATCH_BUTTON, SIMULATED_UI_FIND_MATCH_BUTTON_NORM, "Selecting Multiplayer Matchmaking (1,500 Gold)")
-        self._simulate_ui_click("Attack!", SIMULATED_UI_ATTACK_CONFIRM_BUTTON, SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM, "Confirming army readiness and launching search")
+        # Step 1: Click "Battle" from Home Village
+        self._simulate_ui_click(
+            "Battle",
+            SIMULATED_UI_BATTLE_BUTTON,
+            SIMULATED_UI_BATTLE_BUTTON_NORM,
+            "Opening attack menu from Home Village"
+        )
+        self._emit_log("DEBUG", "⏳ Waiting for Multiplayer Matchmaking modal to pop up...")
+        if not self._interruptible_sleep(self.config.ui_modal_delay_seconds):
+            return False
+
+        # Step 2: Click "Find a Match" in left panel
+        self._simulate_ui_click(
+            "Find a Match",
+            SIMULATED_UI_FIND_MATCH_BUTTON,
+            SIMULATED_UI_FIND_MATCH_BUTTON_NORM,
+            "Selecting Multiplayer Matchmaking (1,500 Gold)"
+        )
+        self._emit_log("DEBUG", "⏳ Waiting for Army Overview modal to pop up...")
+        if not self._interruptible_sleep(self.config.ui_army_popup_delay_seconds):
+            return False
+
+        # Step 3: Click "Attack!" button on Army Overview modal
+        self._simulate_ui_click(
+            "Attack!",
+            SIMULATED_UI_ATTACK_CONFIRM_BUTTON,
+            SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM,
+            "Confirming army readiness and launching matchmaking search"
+        )
+        self._emit_log("INFO", "☁️ Scouting clouds: waiting for new enemy base to load...")
+        if not self._interruptible_sleep(self.config.ui_cloud_search_delay_seconds):
+            return False
 
         # ----------------------------------------------------------------------
         # Search Loop: Search until suitable base or search limit reached
@@ -540,9 +609,10 @@ class AutonomousEngine:
                 self._simulate_ui_click("Next", SIMULATED_UI_NEXT_BUTTON, SIMULATED_UI_NEXT_BUTTON_NORM, f"Skipping Base #{search_attempts} — Unmet Thresholds")
                 self._emit_log(
                     "DEBUG",
-                    f"Skipping Base #{search_attempts} — Reasons: {', '.join(target_eval.reasons)}"
+                    f"☁️ Skipping Base #{search_attempts} — Reasons: {', '.join(target_eval.reasons)}. Waiting for next candidate..."
                 )
-                time.sleep(0.02)
+                if not self._interruptible_sleep(self.config.ui_next_base_delay_seconds):
+                    return False
                 if self.state_machine.can_transition_to(FarmingState.SEARCHING):
                     self.state_machine.transition_to(FarmingState.SEARCHING, trigger="skip_to_next")
 
@@ -628,6 +698,9 @@ class AutonomousEngine:
 
         self._emit_log("INFO", f"Battle Complete! {battle_result.summary}")
         self._simulate_ui_click("Return Home", SIMULATED_UI_RETURN_HOME_BUTTON, SIMULATED_UI_RETURN_HOME_BUTTON_NORM, "Returning to Home Village after battle")
+        self._emit_log("DEBUG", "⏳ Transitioning back to Home Village...")
+        if not self._interruptible_sleep(self.config.ui_return_home_delay_seconds):
+            return False
 
         # Persist to database
         try:
