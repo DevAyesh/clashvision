@@ -84,7 +84,7 @@ class StateClassifier:
     ) -> None:
         self.enable_debouncing = enable_debouncing
         self.debouncer = StateDebouncer(required_consecutive=debounce_frames)
-        self.ui_element_detector = ui_element_detector
+        self.ui_element_detector = ui_element_detector if ui_element_detector is not None else UIElementDetector()
 
     def classify(self, frame: np.ndarray, timestamp: Optional[float] = None) -> VisionAnalysisResult:
         """
@@ -196,19 +196,28 @@ class StateClassifier:
                     evidence["ui_elements"] = [elem.to_dict() for elem in detected_elements]
                     for elem in detected_elements:
                         if elem.state_association and elem.state_association in scores:
-                            if elem.element_type == UIElementType.BATTLE_BUTTON.value and elem.confidence >= 0.75:
-                                scores[GameState.HOME_VILLAGE] += 5.0
+                            if elem.element_type == UIElementType.BATTLE_BUTTON.value and elem.confidence >= 0.70:
+                                scores[GameState.HOME_VILLAGE] += 6.0
                                 scores[GameState.ENEMY_BASE_PREVIEW] = 0.0
                                 scores[GameState.BATTLE_RESULT] = 0.0
                                 scores[GameState.BATTLE_IN_PROGRESS] = 0.0
-                            elif elem.element_type == UIElementType.NEXT_BUTTON.value and elem.confidence >= 0.75:
-                                scores[GameState.ENEMY_BASE_PREVIEW] += 5.0
+                                scores[GameState.MULTIPLAYER_INTERFACE] = 0.0
+                                scores[GameState.ARMY_CONFIGURATION] = 0.0
+                            elif elem.element_type == UIElementType.NEXT_BUTTON.value and elem.confidence >= 0.70:
+                                scores[GameState.ENEMY_BASE_PREVIEW] += 6.0
                                 scores[GameState.HOME_VILLAGE] = 0.0
-                            elif elem.element_type == UIElementType.FIND_MATCH_BUTTON.value and elem.confidence >= 0.75:
-                                scores[GameState.MULTIPLAYER_INTERFACE] += 5.0
+                                scores[GameState.MULTIPLAYER_INTERFACE] = 0.0
+                                scores[GameState.ARMY_CONFIGURATION] = 0.0
+                            elif elem.element_type == UIElementType.FIND_MATCH_BUTTON.value and elem.confidence >= 0.70:
+                                scores[GameState.MULTIPLAYER_INTERFACE] += 6.0
                                 scores[GameState.HOME_VILLAGE] = 0.0
-                            elif elem.element_type == UIElementType.ATTACK_CONFIRM_BUTTON.value and elem.confidence >= 0.75:
-                                scores[GameState.ARMY_CONFIGURATION] += 5.0
+                                scores[GameState.ENEMY_BASE_PREVIEW] = 0.0
+                            elif elem.element_type == UIElementType.ATTACK_CONFIRM_BUTTON.value and elem.confidence >= 0.70:
+                                scores[GameState.ARMY_CONFIGURATION] += 6.0
+                                scores[GameState.HOME_VILLAGE] = 0.0
+                                scores[GameState.ENEMY_BASE_PREVIEW] = 0.0
+                            elif elem.element_type == UIElementType.EDIT_ARMY_BUTTON.value and elem.confidence >= 0.70:
+                                scores[GameState.MULTIPLAYER_INTERFACE] += 4.0
                                 scores[GameState.HOME_VILLAGE] = 0.0
                             else:
                                 scores[elem.state_association] += 2.0 * elem.confidence
@@ -493,14 +502,20 @@ class StateClassifier:
             orange_mask = cv2.inRange(hsv_n, np.array([10, 100, 100]), np.array([25, 255, 255]))
             has_next_button = np.count_nonzero(orange_mask) > (next_crop.shape[0] * next_crop.shape[1] * 0.15)
 
+        is_home_indicators = (
+            evidence.get("top_hud_detected", False)
+            or evidence.get("attack_button_detected", False)
+            or evidence.get("shop_button_detected", False)
+        )
+
         if has_loot_box and has_next_button:
             evidence["loot_box_top_left"] = True
             evidence["next_button_bottom_right"] = True
             scores[GameState.ENEMY_BASE_PREVIEW] += 3.5
-        elif has_next_button:
+        elif has_next_button and not is_home_indicators:
             evidence["next_button_bottom_right"] = True
-            scores[GameState.ENEMY_BASE_PREVIEW] += 2.5
-        elif has_loot_box:
+            scores[GameState.ENEMY_BASE_PREVIEW] += 2.0
+        elif has_loot_box and not is_home_indicators:
             evidence["loot_box_top_left"] = True
             # Weak indicator without Next button (never outscores Home Village)
             scores[GameState.ENEMY_BASE_PREVIEW] += 0.6

@@ -74,6 +74,20 @@ ELEMENT_COLOR_MAP: Dict[str, Tuple[int, int, int]] = {
     UIElementType.SURRENDER_CONFIRM_BUTTON.value: (60, 60, 230),# Red
 }
 
+# Standard expected spatial bounding regions (x, y, width, height) in normalized coordinates [0.0 .. 1.0]
+# Restricts search areas for 10x-20x acceleration and false-positive elimination
+DEFAULT_SPATIAL_ROIS: Dict[str, Tuple[float, float, float, float]] = {
+    UIElementType.BATTLE_BUTTON.value: (0.0, 0.65, 0.30, 0.35),
+    UIElementType.FIND_MATCH_BUTTON.value: (0.0, 0.45, 0.50, 0.50),
+    UIElementType.ATTACK_CONFIRM_BUTTON.value: (0.55, 0.65, 0.45, 0.35),
+    UIElementType.NEXT_BUTTON.value: (0.70, 0.70, 0.30, 0.30),
+    UIElementType.END_BATTLE_BUTTON.value: (0.0, 0.70, 0.35, 0.30),
+    UIElementType.RETURN_HOME_BUTTON.value: (0.0, 0.65, 0.40, 0.35),
+    UIElementType.CLOSE_MODAL_BUTTON.value: (0.60, 0.04, 0.39, 0.40),
+    UIElementType.EDIT_ARMY_BUTTON.value: (0.0, 0.70, 0.40, 0.30),
+    UIElementType.SURRENDER_CONFIRM_BUTTON.value: (0.30, 0.40, 0.40, 0.30),
+}
+
 
 @dataclass
 class UIElementResult:
@@ -123,11 +137,13 @@ class ElementRecognitionConfig:
     scales: List[float] = field(default_factory=lambda: [0.5, 0.65, 0.8, 1.0, 1.25, 1.5, 1.875, 2.0])
     min_confidence: float = 0.65
     high_confidence: float = 0.85
-    early_exit_threshold: float = 0.95
+    early_exit_threshold: float = 0.92
     nms_iou_threshold: float = 0.35
     ambiguity_margin: float = 0.08
     method: str = "grayscale"  # "grayscale" or "edge"
     color_verification: bool = True
+    use_spatial_rois: bool = True
+    adaptive_scaling: bool = True
     save_debug_annotated_images: bool = False
     debug_output_dir: str = "debug_detections"
 
@@ -321,29 +337,71 @@ class UIElementDetector:
                 key=lambda e: 0 if e in relevant_types else 1
             )
 
+        # Determine search scales (adaptive if enabled, else config.scales)
+        if self.config.adaptive_scaling and w >= 320:
+            s_exp = w / 1024.0
+            search_scales = [
+                round(s_exp * f, 4)
+                for f in [1.0, 0.92, 1.08, 0.80, 1.25, 1.50]
+            ]
+        else:
+            search_scales = self.config.scales
+
         for elem_type in element_types:
             templates = self._templates.get(elem_type, [])
             best_element_result: Optional[UIElementResult] = None
             elem_matches: List[Tuple[float, UIElementResult]] = []
 
+            # Determine search region (ROI or full frame)
+            roi_applied = False
+            search_img = image
+            offset_x = 0
+            offset_y = 0
+
+            if self.config.use_spatial_rois and elem_type in DEFAULT_SPATIAL_ROIS and w >= 400 and h >= 300:
+                rx, ry, rw_pct, rh_pct = DEFAULT_SPATIAL_ROIS[elem_type]
+                x_min = max(0, int(rx * w))
+                y_min = max(0, int(ry * h))
+                x_max = min(w, int((rx + rw_pct) * w))
+                y_max = min(h, int((ry + rh_pct) * h))
+                if (x_max - x_min) >= 50 and (y_max - y_min) >= 30:
+                    search_img = image[y_min:y_max, x_min:x_max]
+                    offset_x = x_min
+                    offset_y = y_min
+                    roi_applied = True
+
             for tpl_name, tpl in templates:
-                # Multi-scale match
+                # Multi-scale match within designated search image
                 match_res = VisionPreprocessor.match_template_multiscale(
-                    image=image,
+                    image=search_img,
                     template=tpl,
-                    scales=self.config.scales,
+                    scales=search_scales,
                     method=self.config.method,
                     threshold=self.config.min_confidence,
                     early_exit_threshold=self.config.early_exit_threshold,
                 )
 
                 if match_res.found and match_res.confidence >= self.config.min_confidence:
+                    bx = offset_x + match_res.x
+                    by = offset_y + match_res.y
+                    bw, bh = match_res.width, match_res.height
+
+                    abs_match_res = TemplateMatchResult(
+                        found=True,
+                        x=bx,
+                        y=by,
+                        width=bw,
+                        height=bh,
+                        confidence=match_res.confidence,
+                        scale=match_res.scale,
+                        method=match_res.method,
+                    )
+
                     # Optional color verification
-                    if self.config.color_verification and not self._verify_color(image, match_res, elem_type):
+                    if self.config.color_verification and not self._verify_color(image, abs_match_res, elem_type):
                         continue
 
                     # Create normalized coordinates
-                    bx, by, bw, bh = match_res.x, match_res.y, match_res.width, match_res.height
                     cx, cy = bx + bw // 2, by + bh // 2
                     norm_box = NormalizedRect(
                         x=bx / float(w),
