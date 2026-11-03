@@ -82,6 +82,59 @@ class TestEmergencyStopHotkey(unittest.TestCase):
         self.assertEqual(view.lbl_state.text(), "EMERGENCY STOPPED")
         mock_event.accept.assert_called_once()
 
+    def test_autonomous_simulator_view_start_shortcut_f5(self) -> None:
+        view = AutonomousSimulatorView(engine=self.engine)
+        self.engine.start = MagicMock()
+
+        # Simulate F5 shortcut activation
+        view.shortcut_start.activated.emit()
+        self.engine.start.assert_called_once()
+
+    def test_autonomous_simulator_view_pause_toggle_space(self) -> None:
+        view = AutonomousSimulatorView(engine=self.engine)
+        self.engine.start = MagicMock()
+        self.engine.pause = MagicMock()
+        self.engine.resume = MagicMock()
+
+        # When in READY/STOPPED, Space starts
+        view.shortcut_pause.activated.emit()
+        self.engine.start.assert_called_once()
+
+    def test_resolution_independent_button_click_mapping(self) -> None:
+        from clashvision.core.constants import (
+            SIMULATED_UI_BATTLE_BUTTON_NORM,
+            SIMULATED_UI_FIND_MATCH_BUTTON_NORM,
+            SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM,
+            SIMULATED_UI_NEXT_BUTTON_NORM,
+            SIMULATED_UI_RETURN_HOME_BUTTON_NORM,
+            SIMULATED_UI_BATTLE_BUTTON,
+            SIMULATED_UI_FIND_MATCH_BUTTON,
+            SIMULATED_UI_ATTACK_CONFIRM_BUTTON,
+            SIMULATED_UI_NEXT_BUTTON,
+            SIMULATED_UI_RETURN_HOME_BUTTON,
+        )
+        # Test custom canvas resolution (e.g. 1024x576)
+        self.engine.executor.canvas_width = 1024
+        self.engine.executor.canvas_height = 576
+        self.engine.executor.controller.canvas_width = 1024
+        self.engine.executor.controller.canvas_height = 576
+
+        # Simulate clicks on each button
+        self.engine._simulate_ui_click("Battle", SIMULATED_UI_BATTLE_BUTTON, SIMULATED_UI_BATTLE_BUTTON_NORM)
+        self.engine._simulate_ui_click("Find a Match", SIMULATED_UI_FIND_MATCH_BUTTON, SIMULATED_UI_FIND_MATCH_BUTTON_NORM)
+        self.engine._simulate_ui_click("Attack!", SIMULATED_UI_ATTACK_CONFIRM_BUTTON, SIMULATED_UI_ATTACK_CONFIRM_BUTTON_NORM)
+        self.engine._simulate_ui_click("Next", SIMULATED_UI_NEXT_BUTTON, SIMULATED_UI_NEXT_BUTTON_NORM)
+        self.engine._simulate_ui_click("Return Home", SIMULATED_UI_RETURN_HOME_BUTTON, SIMULATED_UI_RETURN_HOME_BUTTON_NORM)
+
+        history = self.engine.executor.controller.action_history
+        self.assertGreaterEqual(len(history), 5)
+        # Verify all coordinates are within 1024x576 bounds
+        for act in history:
+            self.assertGreaterEqual(act.x, 0)
+            self.assertLessEqual(act.x, 1024)
+            self.assertGreaterEqual(act.y, 0)
+            self.assertLessEqual(act.y, 576)
+
     def test_main_window_keyboard_shortcuts_and_auto_bot_emergency_stop(self) -> None:
         # Instantiate headless MainWindow with mock capture
         window = MainWindow(mock_capture=True)

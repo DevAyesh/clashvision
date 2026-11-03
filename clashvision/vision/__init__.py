@@ -30,6 +30,13 @@ from clashvision.vision.state_classifier import (
 from clashvision.vision.layout_analyzer import (
     BaseLayoutAnalyzer,
 )
+from clashvision.vision.ui_element_detector import (
+    UIElementType,
+    UIElementResult,
+    UIElementDetector,
+    ElementRecognitionConfig,
+    DetectionDiagnostics,
+)
 
 __all__ = [
     "VisionPreprocessor",
@@ -48,4 +55,9 @@ __all__ = [
     "StateClassifier",
     "StateDebouncer",
     "BaseLayoutAnalyzer",
+    "UIElementType",
+    "UIElementResult",
+    "UIElementDetector",
+    "ElementRecognitionConfig",
+    "DetectionDiagnostics",
 ]

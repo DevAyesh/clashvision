@@ -181,10 +181,16 @@ class SandboxedController:
                     f"[0..{self.canvas_width}, 0..{self.canvas_height}]."
                 )
 
-    def click(self, x: int, y: int, button: str = "left") -> bool:
+    def click(self, x: Union[int, float], y: Union[int, float], button: str = "left") -> bool:
         """
         Performs a simulated mouse click within the simulator canvas.
+        Supports pixel coordinates or normalized float coordinates in [0.0, 1.0].
         """
+        # Auto-convert normalized coordinates in [0.0, 1.0] to canvas pixel space
+        if isinstance(x, float) and isinstance(y, float) and 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            x = int(round(x * self.canvas_width))
+            y = int(round(y * self.canvas_height))
+
         self.verify_can_execute(action_name="click", x=x, y=y)
 
         action = InputAction(action_type="click", x=int(x), y=int(y), button=button)
@@ -193,17 +199,29 @@ class SandboxedController:
         with _sandbox_context():
             if pyautogui is not None:
                 try:
-                    pyautogui.click(x=x, y=y, button=button)
+                    screen_x = (self.canvas_rect.left if self.canvas_rect else 0) + int(x)
+                    screen_y = (self.canvas_rect.top if self.canvas_rect else 0) + int(y)
+                    pyautogui.click(x=screen_x, y=screen_y, button=button)
                 except Exception as e:
                     logger.debug("PyAutoGUI click executed in headless/mock context: %s", e)
 
-        logger.debug("Sandboxed click dispatched at (%d, %d) [button=%s]", x, y, button)
+        logger.debug("Sandboxed click dispatched at (%d, %d) [button=%s]", int(x), int(y), button)
         return True
 
-    def move_to(self, x: int, y: int) -> bool:
+    def click_normalized(self, nx: float, ny: float, button: str = "left") -> bool:
+        """Performs a simulated mouse click using resolution-independent normalized coordinates [0.0..1.0]."""
+        px = int(round(nx * self.canvas_width))
+        py = int(round(ny * self.canvas_height))
+        return self.click(px, py, button=button)
+
+    def move_to(self, x: Union[int, float], y: Union[int, float]) -> bool:
         """
         Performs a simulated mouse movement within the simulator canvas.
         """
+        if isinstance(x, float) and isinstance(y, float) and 0.0 <= x <= 1.0 and 0.0 <= y <= 1.0:
+            x = int(round(x * self.canvas_width))
+            y = int(round(y * self.canvas_height))
+
         self.verify_can_execute(action_name="move_to", x=x, y=y)
 
         action = InputAction(action_type="move_to", x=int(x), y=int(y))
@@ -212,11 +230,13 @@ class SandboxedController:
         with _sandbox_context():
             if pyautogui is not None:
                 try:
-                    pyautogui.moveTo(x=x, y=y)
+                    screen_x = (self.canvas_rect.left if self.canvas_rect else 0) + int(x)
+                    screen_y = (self.canvas_rect.top if self.canvas_rect else 0) + int(y)
+                    pyautogui.moveTo(x=screen_x, y=screen_y)
                 except Exception as e:
                     logger.debug("PyAutoGUI moveTo executed in headless/mock context: %s", e)
 
-        logger.debug("Sandboxed move_to dispatched at (%d, %d)", x, y)
+        logger.debug("Sandboxed move_to dispatched at (%d, %d)", int(x), int(y))
         return True
 
     def drag(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 100) -> bool:
