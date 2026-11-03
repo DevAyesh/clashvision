@@ -653,3 +653,4 @@ class UIElementDetector:
     def get_diagnostics(self) -> Optional[DetectionDiagnostics]:
         """Returns the telemetry diagnostics from the most recent detection run."""
         return self._last_diagnostics
+
