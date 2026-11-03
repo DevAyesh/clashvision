@@ -2,11 +2,11 @@
 
 ## 1. Test Execution Summary
 
-- **Total Unit & Integration Tests Passed**: 480
+- **Total Unit & Integration Tests Passed**: 498
 - **Total Subtests Passed**: 125
 - **Failures**: 0
 - **Errors**: 0
-- **Execution Time**: ~58.4s
+- **Execution Time**: ~73.8s
 - **Python Version**: 3.13.2 (win32)
 - **Branch**: `clashvision-research-improvements`
 
@@ -16,6 +16,8 @@
 
 | Test Module | Coverage Scope | Result |
 |-------------|----------------|--------|
+| `tests/unit/test_ui_element_detector.py` | UI element multi-scale recognition, NMS conflict resolution, state classifier integration, brightness invariance | 10 / 10 PASSED |
+| `tests/unit/test_emergency_stop_hotkey.py` | Global keyboard listener, Esc/F12 emergency stop, F5 start hotkey, space toggle, sub-50ms SLA | 8 / 8 PASSED |
 | `tests/unit/test_multiscale_template_matching.py` | Multi-scale template matching across 720p/1080p, Canny edges, early exit | 12 / 12 PASSED |
 | `tests/unit/test_numeric_parser.py` | Resource parsing, standard/European notation, timer format, confidence scoring | 20 / 20 PASSED |
 | `tests/unit/test_ocr_engine.py` | BaseOCREngine, Mock, Pytesseract, RapidOCR, EasyOCR fallback interfaces | 23 / 23 PASSED |

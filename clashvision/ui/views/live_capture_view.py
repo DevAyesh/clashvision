@@ -36,6 +36,7 @@ class LiveCaptureView(QWidget):
         self._last_frame_time = time.time()
         self._fps_counter = 0.0
         self._last_packet: Optional[FramePacket] = None
+        self._ui_detector: Optional[Any] = None
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -66,6 +67,11 @@ class LiveCaptureView(QWidget):
         self.chk_state_badge.setChecked(True)
         self.chk_state_badge.toggled.connect(self._on_overlay_changed)
         controls_bar.addWidget(self.chk_state_badge)
+
+        self.chk_ui_elements = QCheckBox("UI Controls HUD")
+        self.chk_ui_elements.setChecked(True)
+        self.chk_ui_elements.toggled.connect(self._on_overlay_changed)
+        controls_bar.addWidget(self.chk_ui_elements)
 
         controls_bar.addStretch()
 
@@ -194,6 +200,8 @@ class LiveCaptureView(QWidget):
                 overlays.append("OCR Zones")
             if self.chk_state_badge.isChecked():
                 overlays.append("HUD")
+            if getattr(self, "chk_ui_elements", None) and self.chk_ui_elements.isChecked():
+                overlays.append("UI Elements")
             overlay_suffix = f" [HUD: {', '.join(overlays)}]" if overlays else ""
             self.feed_canvas.setText(f"Frame #{packet.frame_id} captured ({packet.width}x{packet.height}){overlay_suffix}")
 
@@ -219,4 +227,14 @@ class LiveCaptureView(QWidget):
             cv2.rectangle(canvas_img, (int(0.04 * fw), int(0.03 * fh)), (int(0.22 * fw), int(0.09 * fh)), (0, 215, 255), 1)
             cv2.rectangle(canvas_img, (int(0.04 * fw), int(0.09 * fh)), (int(0.22 * fw), int(0.15 * fh)), (255, 0, 255), 1)
             cv2.rectangle(canvas_img, (int(0.04 * fw), int(0.15 * fh)), (int(0.22 * fw), int(0.21 * fh)), (200, 50, 50), 1)
+        if getattr(self, "chk_ui_elements", None) and self.chk_ui_elements.isChecked():
+            try:
+                if self._ui_detector is None:
+                    from clashvision.vision.ui_element_detector import UIElementDetector
+                    self._ui_detector = UIElementDetector()
+                detections = self._ui_detector.detect_elements(canvas_img)
+                if detections:
+                    canvas_img = self._ui_detector.annotate_frame(canvas_img, detections, show_hud=False)
+            except Exception:
+                pass
         return canvas_img

@@ -27,6 +27,11 @@ import numpy as np
 
 from clashvision.core.constants import GameState
 from clashvision.core.models import VisionAnalysisResult
+from clashvision.vision.ui_element_detector import (
+    UIElementDetector,
+    UIElementResult,
+    UIElementType,
+)
 
 
 class StateDebouncer:
@@ -71,9 +76,15 @@ class StateClassifier:
     and structural contours to produce high-confidence classifications and supporting evidence.
     """
 
-    def __init__(self, enable_debouncing: bool = False, debounce_frames: int = 2) -> None:
+    def __init__(
+        self,
+        enable_debouncing: bool = False,
+        debounce_frames: int = 2,
+        ui_element_detector: Optional[UIElementDetector] = None,
+    ) -> None:
         self.enable_debouncing = enable_debouncing
         self.debouncer = StateDebouncer(required_consecutive=debounce_frames)
+        self.ui_element_detector = ui_element_detector
 
     def classify(self, frame: np.ndarray, timestamp: Optional[float] = None) -> VisionAnalysisResult:
         """
@@ -177,6 +188,33 @@ class StateClassifier:
         if not any(v >= 2.5 for k, v in scores.items() if k != GameState.UNKNOWN):
             self._detect_home_village(bgr, evidence, scores)
 
+        # 10. UI Element Detection Integration (if detector configured)
+        if self.ui_element_detector is not None:
+            try:
+                detected_elements = self.ui_element_detector.detect_elements(bgr)
+                if detected_elements:
+                    evidence["ui_elements"] = [elem.to_dict() for elem in detected_elements]
+                    for elem in detected_elements:
+                        if elem.state_association and elem.state_association in scores:
+                            if elem.element_type == UIElementType.BATTLE_BUTTON.value and elem.confidence >= 0.75:
+                                scores[GameState.HOME_VILLAGE] += 5.0
+                                scores[GameState.ENEMY_BASE_PREVIEW] = 0.0
+                                scores[GameState.BATTLE_RESULT] = 0.0
+                                scores[GameState.BATTLE_IN_PROGRESS] = 0.0
+                            elif elem.element_type == UIElementType.NEXT_BUTTON.value and elem.confidence >= 0.75:
+                                scores[GameState.ENEMY_BASE_PREVIEW] += 5.0
+                                scores[GameState.HOME_VILLAGE] = 0.0
+                            elif elem.element_type == UIElementType.FIND_MATCH_BUTTON.value and elem.confidence >= 0.75:
+                                scores[GameState.MULTIPLAYER_INTERFACE] += 5.0
+                                scores[GameState.HOME_VILLAGE] = 0.0
+                            elif elem.element_type == UIElementType.ATTACK_CONFIRM_BUTTON.value and elem.confidence >= 0.75:
+                                scores[GameState.ARMY_CONFIGURATION] += 5.0
+                                scores[GameState.HOME_VILLAGE] = 0.0
+                            else:
+                                scores[elem.state_association] += 2.0 * elem.confidence
+            except Exception as e:
+                logger.debug("Element detector execution error: %s", e)
+
         # Determine winner
         # Exclude UNKNOWN from initial selection
         candidate_scores = {k: v for k, v in scores.items() if k != GameState.UNKNOWN}
@@ -209,6 +247,25 @@ class StateClassifier:
             evidence=evidence,
             timestamp=now,
         )
+
+    def classify_with_elements(
+        self,
+        frame: np.ndarray,
+        timestamp: Optional[float] = None,
+    ) -> Tuple[VisionAnalysisResult, List[UIElementResult]]:
+        """
+        Executes both game state classification and UI element detection on a frame.
+        Returns a tuple of (VisionAnalysisResult, List[UIElementResult]).
+        """
+        detector = self.ui_element_detector or UIElementDetector()
+        elements = detector.detect_elements(frame)
+        prev_detector = self.ui_element_detector
+        self.ui_element_detector = detector
+        try:
+            result = self.classify(frame, timestamp=timestamp)
+        finally:
+            self.ui_element_detector = prev_detector
+        return result, elements
 
     # --------------------------------------------------------------------------
     # Feature Extraction Helpers

@@ -132,6 +132,16 @@ class BaseAnalyzerView(QWidget):
         score_layout.addWidget(self.total_suitability_label)
         metrics_layout.addWidget(score_card)
 
+        # Recognized UI Controls Card
+        ui_card = QFrame()
+        ui_card.setStyleSheet("background-color: #242834; border-radius: 6px; padding: 10px;")
+        ui_layout = QVBoxLayout(ui_card)
+        ui_layout.addWidget(QLabel("Recognized UI Controls:"))
+        self.ui_elements_label = QLabel("None")
+        self.ui_elements_label.setStyleSheet("color: #00d2d3; font-size: 11px; font-weight: bold;")
+        ui_layout.addWidget(self.ui_elements_label)
+        metrics_layout.addWidget(ui_card)
+
         metrics_layout.addStretch()
         content_layout.addWidget(metrics_panel, stretch=2)
 
@@ -190,3 +200,11 @@ class BaseAnalyzerView(QWidget):
         self.preview_canvas.setText(
             f"Base Schematic Ready: State={st_val} | Conf={analysis.confidence * 100:.1f}%"
         )
+
+        # Update recognized UI elements if available
+        ui_elems = analysis.evidence.get("ui_elements", []) if analysis.evidence else []
+        if ui_elems:
+            names = [e.get("element_type", "").replace("_", " ").title() for e in ui_elems]
+            self.ui_elements_label.setText(", ".join(names))
+        else:
+            self.ui_elements_label.setText("None")

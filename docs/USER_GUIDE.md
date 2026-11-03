@@ -49,6 +49,19 @@ python -m clashvision.main --mock
 
 ## 4. Using the Autonomous Farming Simulator
 
+### 4.1 Simulator Controls & Hotkeys
+
+You can control the autonomous simulator using either the on-screen dashboard buttons or direct keyboard hotkeys (supported both within the window and via the background hotkey listener):
+
+| Action | On-Screen Button | Keyboard Shortcut | Behavior |
+|--------|------------------|-------------------|----------|
+| **Start Simulation** | `▶ Start Simulation (F5)` | `F5` | Initiates the autonomous farming scout-simulate-farm loop. |
+| **Pause / Resume** | `⏸ Pause (Space)` / `▶ Resume (Space)` | `Space` | Toggles immediate pause and unpause on the simulation loop. |
+| **Stop Simulation** | `⏹ Stop (Shift+F5)` | `Shift + F5` | Gracefully concludes the current battle and stops execution. |
+| **Emergency Stop** | `🛑 EMERGENCY STOP (Esc / F12)` | `Esc` or `F12` | Halts all worker threads immediately in $<1\text{ ms}$ (strict SLA $<50\text{ ms}$). |
+
+### 4.2 Configuration Parameters
+
 1. Navigate to **Autonomous Simulator** (View 10).
 2. Configure your desired target criteria:
    - **Filter Mode**:
@@ -59,7 +72,7 @@ python -m clashvision.main --mock
    - **Min Gold / Elixir / DE**: Minimum values required before initiating a simulated attack.
    - **Max Search Attempts**: Maximum base skips allowed per cycle.
    - **Max Cycles**: Number of continuous farming loops (e.g. 10).
-3. Click **▶ Start Simulation**.
+3. Click **▶ Start Simulation** or press `F5`.
 4. The engine will automatically:
    - Scout procedural candidate bases.
    - OCR and evaluate loot amounts.
@@ -68,11 +81,30 @@ python -m clashvision.main --mock
    - Simulate deployment, troop interactions, and defense destruction.
    - Resolve stars and loot collected.
    - Record results to database and reset for the next cycle.
-5. Click **🛑 EMERGENCY STOP** at any time to immediately freeze simulation in under 50ms.
+5. Press `Esc` or `F12` at any time to immediately freeze simulation.
 
 ---
 
-## 5. Exporting Farming Analytics
+## 5. UI Element Recognition & Visual Overlays
+
+ClashVision incorporates a multi-scale OpenCV element detector (`UIElementDetector`) that locates key game buttons across arbitrary resolutions (720p, 1080p, 1440p, 4K) without hardcoded offsets:
+
+- **Battle Button** (`battle_button`): Detects the main navigation sword icon at Home Village.
+- **Find a Match Button** (`find_match_button`): Detects multiplayer attack match search button.
+- **Attack Confirm Button** (`attack_confirm_button`): Detects the green confirmation button on army overview modal.
+- **Next Button** (`next_button`): Recognizes the skip button with HSV color verification.
+- **End Battle / Return Home**: Detects combat conclusion and navigation controls.
+
+### Overlay Toggles:
+In **Live Capture View** (View 2), the top control bar allows toggling:
+- **Resource ROIs**: Gold, Elixir, and Dark Elixir crop bounding boxes.
+- **OCR Detection Zones**: Text recognition regions.
+- **State Badge HUD**: Current identified game state (`HOME_VILLAGE`, `ENEMY_BASE_PREVIEW`, etc.).
+- **UI Controls HUD**: Bounding boxes, labels, and confidence tags for recognized buttons.
+
+---
+
+## 6. Exporting Farming Analytics
 
 Export your historical session data at any time:
 - In **Autonomous Simulator**, click **📊 Export Session Analytics**.
